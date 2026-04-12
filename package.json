@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@vercel/speed-insights": "^2.0.0",
     "konva": "^9.3.22",
     "next": "^15.1.0",
     "react": "^19.0.0",
