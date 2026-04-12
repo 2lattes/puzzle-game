@@ -643,8 +643,8 @@ function DifficultyButton({ label, parts, onClick }: { label: string; parts: num
       <div className="flex items-center gap-2 text-2xl font-black text-puzzle-text transition-colors group-hover:text-black">
         {parts}
         <span className="text-xl font-medium text-puzzle-text/40">×</span>
-        <svg viewBox="0 0 24 24" className="w-5 h-5 opacity-80" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M19.439 7.85c-.049.322-.059.648-.029.975.112 1.234 1.168 2.175 2.41 2.175H22v4h-.18c-1.242 0-2.298.941-2.41 2.175a3.24 3.24 0 0 0 .03.975C19.742 19.124 20.658 20 21.688 20H22v2H12v-1.18c0-1.242-.941-2.298-2.175-2.41a3.24 3.24 0 0 0-.975.03c-.975.3-1.851 1.216-1.851 2.246V22H2v-2h1.18c1.242 0 2.298-.941 2.41-2.175a3.24 3.24 0 0 0-.03-.975C5.258 15.876 4.342 15 3.312 15H3v-4h.18c1.242 0 2.298-.941 2.41-2.175a3.24 3.24 0 0 0-.03-.975C5.258 6.876 4.342 6 3.312 6H3V4h9v1.18c0 1.242.941 2.298 2.175 2.41.327.03.653.02.975-.029 1.026-.156 1.842-1.072 1.842-2.102V4h9v2h-.312c-1.03 0-1.946.876-2.248 1.85v0Z" />
+        <svg viewBox="0 0 24 24" className="w-6 h-6 opacity-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M10 21H3V14H5A2 2 0 1 0 5 10H3V3H10V5A2 2 0 1 1 14 5V3H21V10H19A2 2 0 1 0 19 14H21V21H14V19A2 2 0 1 1 10 19V21Z" />
         </svg>
       </div>
       <span className="mt-2 block text-[11px] font-bold uppercase tracking-widest text-puzzle-primaryDark/80">{label}</span>
