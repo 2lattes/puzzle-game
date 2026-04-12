@@ -6,7 +6,18 @@ export default {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        puzzle: {
+          bg: "#fdfbf7",
+          board: "#f4f1ea",
+          primary: "#c2d1c6",
+          primaryDark: "#9cb1a2",
+          accent: "#e1bec0",
+          text: "#4a4643",
+        }
+      }
+    },
   },
   plugins: [],
 } satisfies Config;

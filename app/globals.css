@@ -3,11 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --background: #fafafa;
-  --foreground: #18181b;
+  --background: #fdfbf7;
+  --foreground: #4a4643;
 }
 
+/* Allow the selection page to scroll.
+   The game manages its own overflow via its root div. */
+html {
+  height: 100%;
+}
 body {
+  min-height: 100%;
+  overscroll-behavior-x: none;
   color: var(--foreground);
   background: var(--background);
 }
