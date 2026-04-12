@@ -500,10 +500,17 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
           <div className="order-3 flex w-full flex-wrap justify-end gap-2 sm:order-3 sm:w-auto">
             <button
               type="button"
+              onClick={shuffleCurrent}
+              className="min-h-[44px] rounded-xl border border-puzzle-primary/40 bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm transition hover:bg-puzzle-primary/10 hover:shadow"
+            >
+              Mélanger
+            </button>
+            <button
+              type="button"
               onClick={() => setPhase("config")}
               className="min-h-[44px] rounded-xl border border-puzzle-primary/40 bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm transition hover:bg-puzzle-primary/10 hover:shadow"
             >
-              Changer Difficulté
+              Difficulté
             </button>
             <button
               type="button"
@@ -515,13 +522,6 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
               }`}
             >
               Aide
-            </button>
-            <button
-              type="button"
-              onClick={shuffleCurrent}
-              className="min-h-[44px] rounded-xl border border-puzzle-primary/40 bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm transition hover:bg-puzzle-primary/10 hover:shadow"
-            >
-              Mélanger
             </button>
           </div>
         )}

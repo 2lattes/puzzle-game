@@ -7,10 +7,15 @@ const u = (photoId: string) =>
 /** Thèmes officiels — répartition des 20 puzzles : 7 / 7 / 6 */
 export const PUZZLE_THEMES = [
   "Corse",
-  "Provence",
+  "Coucher de soleil",
+  "Couture",
+  "Exotique",
+  "Fonds Marins",
   "Fruits",
-  "Printemps",
   "Marseille",
+  "Perles",
+  "Printemps",
+  "Provence",
 ] as const;
 
 /**

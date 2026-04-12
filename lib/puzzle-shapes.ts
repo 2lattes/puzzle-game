@@ -73,26 +73,32 @@ function getEdgePath(
   const nx = ty; 
   const ny = -tx;
 
-  // Fonction utilitaire pour placer un point en utilisant t (pourcentage de la distance) 
-  // et n (pourcentage de la taille de l'encoche, décalage selon la normale)
-  const P = (t: number, n: number) => {
-    // Si type = 1 (tab) -> s'éloigne de la pièce (vers l'extérieur).
-    // Si type = -1 (blank) -> rentre dans la pièce (vers l'intérieur).
-    const px = x1 + t * dx + n * sz * type * nx;
-    const py = y1 + t * dy + n * sz * type * ny;
+  // Centre du bord : on y ancre notre encoche pour ne pas l'étirer
+  const cx = x1 + dx / 2;
+  const cy = y1 + dy / 2;
+
+  // Fonction utilitaire pour placer un point depuis le centre (cx, cy)
+  // u : décalage le long de l'axe (proportionnel à sz)
+  // v : décalage vers l'extérieur (proportionnel à sz)
+  const P = (u: number, v: number) => {
+    // Si type = 1 -> encoche s'éloigne (tab)
+    // Si type = -1 -> encoche rentre (blank)
+    const px = cx + u * sz * tx + v * sz * type * nx;
+    const py = cy + u * sz * ty + v * sz * type * ny;
     return `${px.toFixed(2)} ${py.toFixed(2)}`;
   };
 
   let path = '';
   // La logique de tracé utilise des courbes de Bézier cubiques (C)
-  // Ligne jusqu'à la base gauche de l'encoche
-  path += `L ${P(0.38, 0)} `;
-  // Courbe pour dessiner le côté gauche de l'encoche
-  path += `C ${P(0.38, 0.2)}, ${P(0.3, 1.0)}, ${P(0.5, 1.0)} `;
-  // Courbe pour le côté droit
-  path += `C ${P(0.7, 1.0)}, ${P(0.62, 0.2)}, ${P(0.62, 0)} `;
-  // Ligne finale
-  path += `L ${P(1.0, 0)} `;
+  
+  // Ligne droite de (x1, y1) jusqu'à la base gauche de l'encoche
+  path += `L ${P(-0.35, 0)} `;
+  // Courbe pour le côté gauche de l'encoche (crée un cou fin puis s'évase)
+  path += `C ${P(-0.35, 0.3)}, ${P(-0.8, 0.8)}, ${P(0, 0.8)} `;
+  // Courbe pour le côté droit de l'encoche
+  path += `C ${P(0.8, 0.8)}, ${P(0.35, 0.3)}, ${P(0.35, 0)} `;
+  // Ligne droite retournant à (x2, y2)
+  path += `L ${x2.toFixed(1)} ${y2.toFixed(1)} `;
   
   return path;
 }
