@@ -3,8 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --background: #fdfbf7;
-  --foreground: #4a4643;
+  --background: #FFEDEA;
+  --foreground: #2D1F1E;
+  --blush: #FFEDEA;
+  --terracotta: #A8655D;
+  --coral: #C9897F;
 }
 
 /* Allow the selection page to scroll.
@@ -17,4 +20,36 @@ body {
   overscroll-behavior-x: none;
   color: var(--foreground);
   background: var(--background);
+}
+
+@keyframes float {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+@keyframes float-delayed {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-15px) rotate(-5deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-delayed 8s ease-in-out infinite;
+}
+
+.bg-natural-gradient {
+  background: linear-gradient(135deg, #FFEDEA 0%, #f5c5bb 50%, #A8655D 100%);
+}
+
+.glass-morphism {
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px 0 rgba(168, 101, 93, 0.1);
 }

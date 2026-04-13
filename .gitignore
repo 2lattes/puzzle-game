@@ -37,3 +37,6 @@ yarn-error.log*
 # IDEs
 .cursor/
 .vscode/
+
+# npm cache
+.npm_cache/

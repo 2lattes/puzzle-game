@@ -62,7 +62,7 @@ type KonvaDragEvent = { target: KonvaDragTarget };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BOARD_MAX_W = 800;
+
 const GAP_BOARD_SCATTER = 24;
 const PAD = 16;
 /** How close (px) piece-edges must be to trigger a free-space merge */
@@ -150,10 +150,7 @@ function layoutFromImage(
 
 type Layout = ReturnType<typeof layoutFromImage>;
 
-/** Absolute stage-pixel position of a grid slot */
-function slotPos(col: number, row: number, L: Layout) {
-  return { x: L.boardX + col * L.pieceW, y: L.boardY + row * L.pieceH };
-}
+
 
 /** Random position inside the scatter zone; returned as absolute px */
 function randomScatterPx(L: Layout) {
@@ -479,12 +476,12 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-[100dvh] w-full flex-col-reverse md:flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden">
-      <header className="z-10 flex flex-wrap items-center gap-3 border-t md:border-t-0 md:border-b border-puzzle-primary/30 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm transition-all duration-300">
+    <div className="flex h-[100dvh] w-full flex-col-reverse md:flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden" style={{ backgroundColor: '#FFEDEA' }}>
+      <header className="z-10 flex flex-wrap items-center gap-3 border-t md:border-t-0 md:border-b border-puzzle-primary/20 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm transition-all duration-300">
         <button
           type="button"
           onClick={onBack}
-          className="min-h-[44px] order-1 rounded-xl bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm border border-puzzle-primary/40 transition-all hover:bg-puzzle-primary/10 hover:shadow disabled:opacity-50"
+          className="min-h-[44px] order-1 rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-puzzle-primaryDark hover:shadow disabled:opacity-50"
         >
           Retour
         </button>
@@ -501,14 +498,14 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
             <button
               type="button"
               onClick={shuffleCurrent}
-              className="min-h-[44px] rounded-xl border border-puzzle-primary/40 bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm transition hover:bg-puzzle-primary/10 hover:shadow"
+              className="min-h-[44px] rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-puzzle-primaryDark hover:shadow"
             >
               Mélanger
             </button>
             <button
               type="button"
               onClick={() => setPhase("config")}
-              className="min-h-[44px] rounded-xl border border-puzzle-primary/40 bg-white px-4 py-2 text-sm font-medium text-puzzle-text shadow-sm transition hover:bg-puzzle-primary/10 hover:shadow"
+              className="min-h-[44px] rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-puzzle-primaryDark hover:shadow"
             >
               Difficulté
             </button>
@@ -517,8 +514,8 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
               onClick={() => setHelpOn((v) => !v)}
               className={`min-h-[44px] rounded-xl px-4 py-2 text-sm font-medium transition duration-200 ${
                 helpOn
-                  ? "bg-puzzle-accent/20 text-puzzle-text ring-2 ring-puzzle-accent/50"
-                  : "bg-white text-puzzle-text border border-puzzle-primary/40 shadow-sm hover:bg-puzzle-primary/10 hover:shadow"
+                  ? "bg-puzzle-primaryDark text-white shadow-sm ring-2 ring-puzzle-primary/50"
+                  : "bg-puzzle-primary text-white shadow-sm hover:bg-puzzle-primaryDark hover:shadow"
               }`}
             >
               Aide
@@ -575,7 +572,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                   <button
                     type="button"
                     onClick={onBack}
-                    className="w-full min-h-[52px] rounded-2xl bg-puzzle-text px-8 py-3 text-base font-bold text-white shadow-lg shadow-puzzle-text/20 transition-all hover:bg-black hover:scale-[1.02] hover:shadow-xl active:scale-95"
+                    className="w-full min-h-[52px] rounded-2xl bg-puzzle-primary px-8 py-3 text-base font-bold text-white shadow-lg shadow-puzzle-primary/30 transition-all hover:bg-puzzle-primaryDark hover:scale-[1.02] hover:shadow-xl active:scale-95"
                   >
                     Retour au menu
                   </button>
@@ -638,7 +635,7 @@ function DifficultyButton({ label, parts, onClick }: { label: string; parts: num
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center justify-center rounded-3xl border-2 border-puzzle-primary/10 bg-white/60 p-6 transition-all duration-300 hover:border-puzzle-primary hover:bg-white hover:scale-[1.02] hover:shadow-xl hover:shadow-puzzle-primary/10"
+      className="group flex flex-col items-center justify-center rounded-3xl border-2 border-puzzle-primary/20 bg-white/70 p-6 transition-all duration-300 hover:border-puzzle-primary hover:bg-white hover:scale-[1.02] hover:shadow-xl hover:shadow-puzzle-primary/20"
     >
       <div className="flex items-center gap-2 text-2xl font-black text-puzzle-text transition-colors group-hover:text-black">
         {parts}
@@ -727,11 +724,11 @@ function PuzzlePiece({
       {snapFlash && (
         <Path
           data={pathData}
-          stroke="#9cb1a2"
+          stroke="#A8655D"
           strokeWidth={4}
-          shadowColor="#9cb1a2"
+          shadowColor="#A8655D"
           shadowBlur={18}
-          shadowOpacity={0.85}
+          shadowOpacity={0.75}
           listening={false}
           perfectDrawEnabled={false}
         />

@@ -10,10 +10,19 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Next.js 15: Handle native modules like 'canvas' for server components
+  serverExternalPackages: ["canvas"],
   webpack: (config) => {
-    config.externals.push({
-      canvas: "canvas",
-    });
+    // Robust check for externals array before pushing
+    if (config.externals) {
+      if (Array.isArray(config.externals)) {
+        config.externals.push({ canvas: "canvas" });
+      } else if (typeof config.externals === "object") {
+        config.externals = { ...config.externals, canvas: "canvas" };
+      }
+    } else {
+      config.externals = [{ canvas: "canvas" }];
+    }
     return config;
   },
 };

@@ -11,6 +11,7 @@ import type { PuzzleImage } from "@/types";
 type SelectionViewProps = {
   puzzles: PuzzleImage[];
   onSelect: (puzzle: PuzzleImage) => void;
+  onBack?: () => void;
 };
 
 type ThemeFilter = "all" | (typeof PUZZLE_THEMES)[number];
@@ -93,8 +94,8 @@ function HeartButton({
       }}
       className={`absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full shadow-md backdrop-blur-md transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-puzzle-primary ${
         isFav
-          ? "bg-black/80 text-white hover:bg-black"
-          : "bg-white/60 text-puzzle-text/50 hover:bg-white hover:text-black"
+          ? "bg-puzzle-primary text-white hover:bg-puzzle-primaryDark"
+          : "bg-white/60 text-puzzle-text/50 hover:bg-white hover:text-puzzle-primary"
       }`}
     >
       <svg
@@ -118,7 +119,7 @@ function HeartButton({
 /** Checkmark for completed puzzles */
 function CheckmarkIcon() {
   return (
-    <div className="absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white shadow-md backdrop-blur-md">
+    <div className="absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-puzzle-tertiary text-white shadow-md backdrop-blur-md">
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
@@ -143,8 +144,8 @@ function NavButton({
       onClick={onClick}
       className={`flex flex-col items-center justify-center p-3 rounded-[1.25rem] w-[88px] transition-all duration-300 ${
         active
-          ? "bg-black text-white shadow-lg scale-105"
-          : "text-zinc-400 hover:bg-black/5 hover:text-black"
+          ? "bg-puzzle-primary text-white shadow-lg scale-105"
+          : "text-puzzle-secondary/60 hover:bg-puzzle-primary/10 hover:text-puzzle-text"
       }`}
     >
       <span className="w-6 h-6 flex items-center justify-center mb-1">
@@ -155,7 +156,7 @@ function NavButton({
   );
 }
 
-export function SelectionView({ puzzles, onSelect }: SelectionViewProps) {
+export function SelectionView({ puzzles, onSelect, onBack }: SelectionViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTheme, setActiveTheme] = useState<ThemeFilter>("all");
   const [activeTab, setActiveTab] = useState<TabKey>("all");
@@ -194,20 +195,34 @@ export function SelectionView({ puzzles, onSelect }: SelectionViewProps) {
   );
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-slate-50 font-sans text-slate-900 pb-32">
+    <div className="relative flex min-h-[100dvh] flex-col bg-puzzle-bg font-sans text-puzzle-text pb-32">
       <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-6 px-4 py-10 md:px-8 md:py-12">
         {/* Header */}
-        <header className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-black sm:text-4xl">
-            {activeTab === "all" && "Récemment ajoutés"}
-            {activeTab === "favorites" && "Vos favoris"}
-            {activeTab === "imported" && "Créés par vous"}
-          </h1>
-          <p className="text-sm font-medium text-slate-500">
-            {activeTab === "all" && "Découvrez les puzzles les plus populaires du moment."}
-            {activeTab === "favorites" && "Retrouvez ici les puzzles que vous avez aimés."}
-            {activeTab === "imported" && "Transformez vos propres photos en puzzles."}
-          </p>
+        <header className="flex flex-col gap-4">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="group flex w-fit items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-puzzle-secondary shadow-sm ring-1 ring-puzzle-primary/20 transition-all hover:bg-puzzle-bg hover:text-puzzle-text hover:ring-puzzle-primary/40"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              Retour
+            </button>
+          )}
+          <div className="flex flex-col gap-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-puzzle-text sm:text-4xl">
+              {activeTab === "all" && "Récemment ajoutés"}
+              {activeTab === "favorites" && "Vos favoris"}
+              {activeTab === "imported" && "Créés par vous"}
+            </h1>
+            <p className="text-sm font-medium text-puzzle-secondary">
+              {activeTab === "all" && "Découvrez les puzzles les plus populaires du moment."}
+              {activeTab === "favorites" && "Retrouvez ici les puzzles que vous avez aimés."}
+              {activeTab === "imported" && "Transformez vos propres photos en puzzles."}
+            </p>
+          </div>
         </header>
 
         {/* Theme filters (only shown on "Accueil" tab) */}
@@ -326,7 +341,7 @@ export function SelectionView({ puzzles, onSelect }: SelectionViewProps) {
       </div>
 
       {/* Floating Bottom Nav */}
-      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-1 rounded-[2rem] bg-white/80 p-2 shadow-2xl backdrop-blur-xl border border-white/50">
+      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-1 rounded-[2rem] bg-white/90 p-2 shadow-2xl backdrop-blur-xl border border-puzzle-primary/10">
         <NavButton
           active={activeTab === "all"}
           onClick={() => setActiveTab("all")}
@@ -380,10 +395,10 @@ function FilterButton({
       role="tab"
       aria-selected={pressed}
       onClick={onClick}
-      className={`min-h-[40px] rounded-full px-5 py-2 text-sm font-bold transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-black ${
+      className={`min-h-[40px] rounded-full px-5 py-2 text-sm font-bold transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-puzzle-primary ${
         pressed
-          ? "bg-black text-white shadow-md scale-105"
-          : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-black"
+          ? "bg-puzzle-primary text-white shadow-md scale-105"
+          : "border border-puzzle-primary/20 bg-white text-puzzle-secondary hover:border-puzzle-primary/40 hover:bg-puzzle-bg hover:text-puzzle-text"
       }`}
     >
       {label}

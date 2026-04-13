@@ -9,14 +9,19 @@ export default {
     extend: {
       colors: {
         puzzle: {
-          bg: "#fdfbf7",
-          board: "#f4f1ea",
-          primary: "#c2d1c6",
-          primaryDark: "#9cb1a2",
-          accent: "#e1bec0",
-          text: "#4a4643",
+          bg: "#FFEDEA",
+          board: "#fde4df",
+          primary: "#A8655D",
+          primaryDark: "#7D3F37",
+          secondary: "#926F6A",
+          tertiary: "#96703D",
+          accent: "#C9897F",
+          text: "#2D1F1E",
         }
-      }
+      },
+      fontFamily: {
+        sans: ["var(--font-plus-jakarta-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
     },
   },
   plugins: [],

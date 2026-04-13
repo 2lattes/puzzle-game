@@ -3,13 +3,13 @@
 import { useEffect, useRef } from "react";
 
 const COLORS = [
-  "#e1bec0", // puzzle.accent
-  "#c2d1c6", // puzzle.primary
-  "#9cb1a2", // puzzle.primaryDark
-  "#f4f1ea", // puzzle.board
-  "#FFD700", // Gold
-  "#FFB6C1", // Light Pink
-  "#ADD8E6", // Light Blue
+  "#A8655D", // puzzle.primary — terracotta
+  "#C9897F", // puzzle.accent — soft coral
+  "#96703D", // puzzle.tertiary — warm gold-brown
+  "#7D3F37", // puzzle.primaryDark — deep terracotta
+  "#FFEDEA", // puzzle.bg — warm blush white
+  "#F5C5BB", // light coral
+  "#E8A87C", // warm amber
 ];
 
 class Particle {
