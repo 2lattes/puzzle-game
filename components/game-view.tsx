@@ -582,7 +582,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
             <Stage
               width={layout.stageW}
               height={layout.stageH}
-              pixelRatio={typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2}
+              pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
             >
               {/* Background layer: board outline + help image */}
               <Layer listening={false}>
@@ -697,6 +697,20 @@ function PuzzlePiece({
   isLocked: boolean;
   snapFlash: boolean;
 }) {
+  const piecePathRef = useRef<any>(null);
+
+  // We cache the piece path once the image is ready.
+  // This converts the vector Path + Pattern into a simple bitmap.
+  useEffect(() => {
+    if (piecePathRef.current && image.complete) {
+      const timeout = setTimeout(() => {
+        // We only cache the main path to keep the flash effect dynamic
+        piecePathRef.current?.cache();
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [image.complete, layout.pieceW, layout.pieceH]);
+
   const pathData = useMemo(
     () => getPiecePath(layout.pieceW, layout.pieceH, piece.shapeData),
     [layout.pieceW, layout.pieceH, piece.shapeData]
@@ -708,6 +722,7 @@ function PuzzlePiece({
   return (
     <Group x={piece.offsetX} y={piece.offsetY}>
       <Path
+        ref={piecePathRef}
         data={pathData}
         fillPatternImage={image}
         fillPatternOffsetX={piece.col * layout.cropW}
@@ -720,6 +735,7 @@ function PuzzlePiece({
         stroke="rgba(255,255,255,0.2)"
         strokeWidth={1}
         perfectDrawEnabled={false}
+        transformsEnabled="position"
       />
       {snapFlash && (
         <Path
@@ -731,6 +747,7 @@ function PuzzlePiece({
           shadowOpacity={0.75}
           listening={false}
           perfectDrawEnabled={false}
+          transformsEnabled="position"
         />
       )}
     </Group>
