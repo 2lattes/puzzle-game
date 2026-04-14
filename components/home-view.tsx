@@ -49,7 +49,7 @@ export function HomeView({ onStart }: { onStart: () => void }) {
 
       {/* Footer info */}
       <footer className="absolute bottom-8 text-sm text-puzzle-secondary/70 font-medium tracking-wide">
-        Fait avec passion • 2025
+        Fait avec passion • 2026
       </footer>
     </div>
   );
