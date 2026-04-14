@@ -51,6 +51,7 @@ function CardImage({
           quality={85}
         />
       ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={url}
           alt={alt}

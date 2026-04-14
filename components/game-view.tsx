@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Group, Image, Layer, Path, Rect, Stage } from "react-konva";
+import type Konva from "konva";
 import type { PuzzleImage } from "@/types";
 import { generateShapeData, getPiecePath, type PieceShapeData } from "@/lib/puzzle-shapes";
 import { useElementSize } from "@/hooks/use-element-size";
@@ -587,6 +588,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
               {/* Background layer: board outline + help image */}
               <Layer listening={false}>
                 {helpOn && (
+                  /* eslint-disable-next-line jsx-a11y/alt-text */
                   <Image
                     image={image}
                     x={layout.boardX}
@@ -697,7 +699,7 @@ function PuzzlePiece({
   isLocked: boolean;
   snapFlash: boolean;
 }) {
-  const piecePathRef = useRef<any>(null);
+  const piecePathRef = useRef<Konva.Path>(null);
 
   // We cache the piece path once the image is ready.
   // This converts the vector Path + Pattern into a simple bitmap.

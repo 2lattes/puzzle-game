@@ -50,14 +50,10 @@ type CategoryCardProps = {
 };
 
 function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <button
       type="button"
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       className="w-full group relative flex flex-col items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-puzzle-primary"
       aria-label={`Voir la catégorie ${theme}`}
     >
@@ -84,6 +80,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
                 quality={80}
               />
             ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={heroUrl}
                 alt={theme}
