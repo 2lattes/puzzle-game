@@ -14,6 +14,15 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "Mina Puzzle",
   description: "Assemblez des puzzles artisanaux et détendez-vous avec Mina Puzzle.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Mina Puzzle",
+  },
+  manifest: "/manifest.json",
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
