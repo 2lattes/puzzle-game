@@ -42,7 +42,10 @@ type KonvaDragTarget = {
   y: (val?: number) => number;
   moveToTop: () => void;
 };
-type KonvaDragEvent = { target: KonvaDragTarget };
+type KonvaDragEvent = { 
+  target: KonvaDragTarget; 
+  evt: PointerEvent | TouchEvent | MouseEvent;
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -115,7 +118,6 @@ type Layout = ReturnType<typeof layoutBoardFromImage>;
 function createInitialTrayPieces(gridN: GridN): PieceState[] {
   const shapes = generateShapeData(gridN);
   const pieces: PieceState[] = [];
-  let i = 0;
   for (let row = 0; row < gridN; row++) {
     for (let col = 0; col < gridN; col++) {
       pieces.push({
@@ -297,7 +299,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const layout = useMemo(() => {
     if (!image || !gridN || mainSize.width === 0) return null;
     return layoutBoardFromImage(image.naturalWidth, image.naturalHeight, gridN, stageSpaceW, stageSpaceH);
-  }, [image, gridN, stageSpaceW, stageSpaceH]);
+  }, [image, gridN, stageSpaceW, stageSpaceH, mainSize.width]);
 
   const startGame = useCallback((n: GridN) => {
     if (!image) return;
@@ -455,7 +457,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [draggedTrayPiece, layout, clearFlashLater, calculateTrayHoverIndex, setHoverInsertIndex]);
+  }, [draggedTrayPiece, layout, clearFlashLater, calculateTrayHoverIndex, setHoverInsertIndex, mainRef]);
 
   const handleDragStart = useCallback((clusterId: string, e: KonvaDragEvent) => {
     setClusters(prev => {
@@ -476,9 +478,9 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       }
       return next;
     });
-  }, []);
+  }, [mainRef]);
 
-  const handleDragMove = useCallback((clusterId: string, e: any) => {
+  const handleDragMove = useCallback((clusterId: string, e: KonvaDragEvent) => {
     const evt = e.evt as PointerEvent | TouchEvent;
     let clientX = 0, clientY = 0;
     if ('clientX' in evt) {
@@ -500,7 +502,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     }
 
     setHoverInsertIndex(calculateTrayHoverIndex(clientX, clientY));
-  }, [calculateTrayHoverIndex, setHoverInsertIndex]);
+  }, [calculateTrayHoverIndex, setHoverInsertIndex, mainRef]);
 
   const handlePieceReturnToTray = useCallback((clusterId: string) => {
     setClusters(prev => {
@@ -519,7 +521,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     });
   }, []);
 
-  const handleDragEnd = useCallback((clusterId: string, e: any) => {
+  const handleDragEnd = useCallback((clusterId: string, e: KonvaDragEvent) => {
     if (!layout || !mainRef.current) return;
     const node = e.target;
     const absX = node.x();
@@ -569,7 +571,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       }
 
       const movedCl = { ...originalCl, x: absX, y: absY };
-      let updated = prev.map((c) => c.id === clusterId ? movedCl : c);
+      const updated = prev.map((c) => c.id === clusterId ? movedCl : c);
 
       // Reusable tray return function
       const processTrayReturn = (insertIndex: number | null) => {
@@ -647,7 +649,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       // PRIORITY 5: Leave loose piece on the board
       return updated;
     });
-  }, [layout, clearFlashLater, isSideTray, setHoverInsertIndex]);
+  }, [layout, clearFlashLater, isSideTray, setHoverInsertIndex, mainRef]);
 
   return (
     <div className="flex h-[100dvh] w-full flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden touch-none">
@@ -752,7 +754,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                         onClick={() => setShowFullImage(true)}
                         className="w-full min-h-[52px] rounded-2xl bg-white border-2 border-puzzle-primary/20 px-8 py-3 text-base font-bold text-puzzle-primary transition-all hover:bg-puzzle-primary/5 hover:border-puzzle-primary hover:scale-[1.02] active:scale-95 shadow-sm"
                       >
-                        Admirer l'œuvre ✨
+                        Admirer l&apos;œuvre ✨
                       </button>
                       <button
                         type="button"
@@ -858,15 +860,15 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
               >
                 {(() => {
                   const isHTMLDrag = draggedTrayPiece !== null;
-                  const mappedItems = [...trayPieces];
+                  const mappedItems: (PieceState | { id: string; isPlaceholder: true })[] = [...trayPieces];
                   
                   if (!isHTMLDrag && hoverInsertIndexState !== null) {
                      const safeInsertAt = Math.min(hoverInsertIndexState, mappedItems.length);
-                     mappedItems.splice(safeInsertAt, 0, { id: 'placeholder', isPlaceholder: true } as any);
+                     mappedItems.splice(safeInsertAt, 0, { id: 'placeholder', isPlaceholder: true });
                   }
 
-                  return mappedItems.map((piece: any) => {
-                    if (piece.isPlaceholder) {
+                  return mappedItems.map((piece) => {
+                    if ('isPlaceholder' in piece) {
                        return (
                          <div 
                            key="placeholder" 

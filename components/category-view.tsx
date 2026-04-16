@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
 import { PUZZLE_THEMES } from "@/lib/sample-puzzles";
 import type { PuzzleImage } from "@/types";
 
