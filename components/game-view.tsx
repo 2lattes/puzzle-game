@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Group, Image, Layer, Path, Rect, Stage } from "react-konva";
+import { Group, Image as KonvaImage, Layer, Path, Rect, Stage } from "react-konva";
 import type Konva from "konva";
 import type { PuzzleImage } from "@/types";
 import { generateShapeData, getPiecePath, type PieceShapeData } from "@/lib/puzzle-shapes";
@@ -19,38 +19,21 @@ type GameViewProps = {
 type Phase = "config" | "playing";
 type GridN = 4 | 6 | 8 | 10 | 15 | 20;
 
-/** A single puzzle piece – coordinates are relative to its parent Cluster origin */
 type PieceState = {
   id: string;
   col: number;
   row: number;
-  /** Offset inside its cluster (in pixels, computed from col/row × pieceW/H at creation) */
   offsetX: number;
   offsetY: number;
   shapeData: PieceShapeData;
 };
 
-/**
- * A Cluster is the draggable entity.
- * It holds one or more PieceState items.
- * x/y are absolute stage-pixels used by Konva for rendering.
- * nx/ny are normalized positions within the scatter zone [0, 1] for UNLOCKED clusters.
- * On window resize, x/y are recomputed from nx/ny so pieces never go out-of-bounds.
- * When locked==true all pieces are snapped on the board; x/y is derived from col/row.
- */
 type ClusterState = {
   id: string;
-  /** Absolute stage-pixel position of the cluster origin */
   x: number;
   y: number;
-  /** Normalized position within scatter zone [0, 1] — reprojected on every resize */
-  nx: number;
-  ny: number;
-  /** All pieces belonging to this cluster */
   pieces: PieceState[];
-  /** true when the cluster is perfectly snapped on the board */
   locked: boolean;
-  /** Momentary glow after a merge or board-lock */
   snapFlash: boolean;
 };
 
@@ -63,10 +46,7 @@ type KonvaDragEvent = { target: KonvaDragTarget };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-
-const GAP_BOARD_SCATTER = 24;
 const PAD = 16;
-/** How close (px) piece-edges must be to trigger a free-space merge */
 const FREE_MERGE_PX = 20;
 
 // ─── Image loader hook ────────────────────────────────────────────────────────
@@ -89,7 +69,7 @@ function usePuzzleImage(url: string) {
 
 // ─── Layout helpers ───────────────────────────────────────────────────────────
 
-function layoutFromImage(
+function layoutBoardFromImage(
   naturalW: number,
   naturalH: number,
   gridN: GridN,
@@ -99,106 +79,60 @@ function layoutFromImage(
   if (containerW === 0 || containerH === 0) {
     return {
       displayW: 0, displayH: 0, pieceW: 0, pieceH: 0,
-      cropW: 0, cropH: 0,
-      boardX: 0, boardY: 0,
-      scatterX: 0, scatterY: 0, scatterW: 0, scatterH: 0,
+      cropW: 0, cropH: 0, boardX: 0, boardY: 0,
       stageW: containerW, stageH: containerH,
     };
   }
 
-  const isPortrait = containerW < containerH;
-  let displayW = 0, displayH = 0, boardX = 0, boardY = 0;
-  let scatterX = 0, scatterY = 0, scatterW = 0, scatterH = 0;
   const aspect = naturalW / naturalH;
+  let displayW = containerW - PAD * 2;
+  let displayH = displayW / aspect;
 
-  if (isPortrait) {
-    const availW = containerW - PAD * 2;
-    const availH = containerH * 0.55;
-    if (availW / aspect <= availH) { displayW = availW; displayH = availW / aspect; }
-    else                           { displayH = availH; displayW = availH * aspect; }
-    boardX = (containerW - displayW) / 2;
-    boardY = PAD;
-    scatterX = PAD;
-    scatterY = boardY + displayH + GAP_BOARD_SCATTER;
-    scatterW = containerW - PAD * 2;
-    scatterH = containerH - scatterY - PAD;
-  } else {
-    const availW = containerW * 0.65;
-    const availH = containerH - PAD * 2;
-    if (availW / aspect <= availH) { displayW = availW; displayH = availW / aspect; }
-    else                           { displayH = availH; displayW = availH * aspect; }
-    boardX = PAD;
-    boardY = Math.max(PAD, (containerH - displayH) / 2 - PAD);
-    scatterX = boardX + displayW + GAP_BOARD_SCATTER;
-    scatterY = PAD;
-    scatterW = containerW - scatterX - PAD;
-    scatterH = containerH - PAD * 2;
+  if (displayH > containerH - PAD * 2) {
+    displayH = containerH - PAD * 2;
+    displayW = displayH * aspect;
   }
 
+  const boardX = Math.round(Math.max(0, (containerW - displayW) / 2));
+  const boardY = Math.round(Math.max(0, (containerH - displayH) / 2));
+
   return {
-    displayW, displayH,
+    displayW: Math.round(displayW),
+    displayH: Math.round(displayH),
     pieceW: displayW / gridN,
     pieceH: displayH / gridN,
     cropW: naturalW / gridN,
     cropH: naturalH / gridN,
-    boardX, boardY,
-    scatterX, scatterY,
-    scatterW: Math.max(scatterW, 1),
-    scatterH: Math.max(scatterH, 1),
-    stageW: containerW, stageH: containerH,
+    boardX,
+    boardY,
+    stageW: Math.round(containerW),
+    stageH: Math.round(containerH),
   };
 }
 
-type Layout = ReturnType<typeof layoutFromImage>;
+type Layout = ReturnType<typeof layoutBoardFromImage>;
 
-
-
-/** Random position inside the scatter zone; returned as absolute px */
-function randomScatterPx(L: Layout) {
-  if (L.stageW === 0) return { x: 0, y: 0 };
-  return {
-    x: L.scatterX + Math.random() * Math.max(0, L.scatterW - L.pieceW),
-    y: L.scatterY + Math.random() * Math.max(0, L.scatterH - L.pieceH),
-  };
-}
-
-// ─── Cluster factory ──────────────────────────────────────────────────────────
-
-function createScatteredClusters(gridN: GridN, L: Layout): ClusterState[] {
+function createInitialTrayPieces(gridN: GridN): PieceState[] {
   const shapes = generateShapeData(gridN);
-  const clusters: ClusterState[] = [];
+  const pieces: PieceState[] = [];
   let i = 0;
   for (let row = 0; row < gridN; row++) {
     for (let col = 0; col < gridN; col++) {
-      const { x, y } = randomScatterPx(L);
-      const nx = L.scatterW > 0 ? (x - L.scatterX) / L.scatterW : 0;
-      const ny = L.scatterH > 0 ? (y - L.scatterY) / L.scatterH : 0;
-      clusters.push({
-        id: `cl-${i++}`,
-        x,
-        y,
-        nx,
-        ny,
-        locked: false,
-        snapFlash: false,
-        pieces: [{
-          id: `p-${row}-${col}`,
-          col,
-          row,
-          offsetX: 0,
-          offsetY: 0,
-          shapeData: shapes[row][col],
-        }],
+      pieces.push({
+        id: `p-${row}-${col}`,
+        col,
+        row,
+        offsetX: 0,
+        offsetY: 0,
+        shapeData: shapes[row][col],
       });
     }
   }
-  return clusters;
+  return pieces.sort(() => Math.random() - 0.5);
 }
 
 // ─── Adjacency & merge helpers ────────────────────────────────────────────────
 
-/** True when piece A (in cluster A at origin ax/ay) and piece B (in cluster B at bx/by)
- *  are supposed to be horizontally or vertically adjacent in the final grid. */
 function arePiecesGridAdjacent(
   colA: number, rowA: number,
   colB: number, rowB: number,
@@ -208,11 +142,6 @@ function arePiecesGridAdjacent(
   return (dc === 1 && dr === 0) || (dc === 0 && dr === 1);
 }
 
-/**
- * Given two clusters, check whether any pair of (pieceA, pieceB) from each cluster
- * is grid-adjacent AND their rendered stage positions differ by at most FREE_MERGE_PX.
- * Returns true if a merge should happen.
- */
 function shouldMergeClusters(
   ca: ClusterState,
   cb: ClusterState,
@@ -223,7 +152,6 @@ function shouldMergeClusters(
     const pay = ca.y + pa.offsetY;
     for (const pb of cb.pieces) {
       if (!arePiecesGridAdjacent(pa.col, pa.row, pb.col, pb.row)) continue;
-      // Where pb *should* be relative to pa if they're correctly aligned
       const expectedPbX = pax + (pb.col - pa.col) * L.pieceW;
       const expectedPbY = pay + (pb.row - pa.row) * L.pieceH;
       const actualPbX = cb.x + pb.offsetX;
@@ -235,19 +163,10 @@ function shouldMergeClusters(
   return false;
 }
 
-/**
- * Merge cluster `src` INTO cluster `dst`.
- * Recalculates offsets so all pieces sit at the correct relative positions
- * based on what `dst`'s first piece establishes as the "grid origin".
- */
 function mergeClusters(dst: ClusterState, src: ClusterState, L: Layout): ClusterState {
-  // Use dst.x/y as the cluster origin; both clusters share the same grid, so
-  // src offsets relative to dst origin = (src.x - dst.x) + src_piece.offsetX, etc.
   const dx = src.x - dst.x;
   const dy = src.y - dst.y;
 
-  // Snap src cluster origin so pieces align perfectly to the grid
-  // Pick the first adjacent pair to compute correction
   let corrX = 0, corrY = 0;
   outer:
   for (const pa of dst.pieces) {
@@ -275,18 +194,10 @@ function mergeClusters(dst: ClusterState, src: ClusterState, L: Layout): Cluster
   return { ...dst, pieces: newPieces };
 }
 
-/**
- * Check if this cluster's pieces all land on their correct board slots.
- * Returns the corrected (snapped) x/y for the cluster origin if they do, or null.
- */
 function trySnapToBoard(cluster: ClusterState, L: Layout): { x: number; y: number } | null {
   if (L.displayW === 0) return null;
   const threshold = Math.max(L.pieceW, L.pieceH) * 0.3;
 
-  // The cluster's "grid origin" will be boardX/Y when every piece lands exactly.
-  // cluster.x + piece.offsetX  should equal  boardX + piece.col * pieceW
-  // → clusterOriginX = boardX + piece.col * pieceW - piece.offsetX  (should be same for all)
-  // We pick the first piece and compute the expected cluster origin:
   const first = cluster.pieces[0];
   const expectedOriginX = L.boardX + first.col * L.pieceW - first.offsetX;
   const expectedOriginY = L.boardY + first.row * L.pieceH - first.offsetY;
@@ -294,7 +205,6 @@ function trySnapToBoard(cluster: ClusterState, L: Layout): { x: number; y: numbe
   const dist = Math.hypot(cluster.x - expectedOriginX, cluster.y - expectedOriginY);
   if (dist > threshold) return null;
 
-  // Verify all pieces would land on unoccupied correct slots
   return { x: expectedOriginX, y: expectedOriginY };
 }
 
@@ -304,82 +214,120 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const { image, error } = usePuzzleImage(puzzle.url);
   const [phase, setPhase] = useState<Phase>("config");
   const [gridN, setGridN] = useState<GridN | null>(null);
+  
+  const [trayPieces, setTrayPieces] = useState<PieceState[]>([]);
   const [clusters, setClusters] = useState<ClusterState[]>([]);
+  const [draggedTrayPiece, setDraggedTrayPiece] = useState<{
+    piece: PieceState;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
+
   const [helpOn, setHelpOn] = useState(false);
   const [won, setWon] = useState(false);
+  const [showFullImage, setShowFullImage] = useState(false);
   const winAlertedRef = useRef(false);
   const { markCompleted } = useCompleted();
 
-  const [wrapperRef, size] = useElementSize<HTMLDivElement>();
+  const [mainRef, mainSize] = useElementSize<HTMLElement>();
+  const [windowSize, setWindowSize] = useState({ 
+    w: typeof window !== "undefined" ? window.innerWidth : 0, 
+    h: typeof window !== "undefined" ? window.innerHeight : 0 
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateSize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight });
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, []);
+
+  const screenIsLandscape = windowSize.w > windowSize.h;
+  const imageIsPortrait = image ? image.naturalWidth < image.naturalHeight : false;
+  const isSideTray = screenIsLandscape && imageIsPortrait;
+
+  const stageSpaceW = isSideTray ? Math.max(0, mainSize.width - 160) : mainSize.width;
+  const stageSpaceH = isSideTray ? mainSize.height : Math.max(0, mainSize.height - 150);
+
+  const trayRef = useRef<HTMLDivElement>(null);
+  const [hoverInsertIndexState, setHoverInsertIndexState] = useState<number | null>(null);
+  const hoverInsertIndexRef = useRef<number | null>(null);
+  const draggedTrayPieceRef = useRef(draggedTrayPiece);
+
+  const [draggingBoardCluster, setDraggingBoardCluster] = useState<{
+    cluster: ClusterState;
+    globalX: number;
+    globalY: number;
+  } | null>(null);
+  
+  useEffect(() => {
+    draggedTrayPieceRef.current = draggedTrayPiece;
+  }, [draggedTrayPiece]);
+
+  const setHoverInsertIndex = useCallback((val: number | null) => {
+    if (hoverInsertIndexRef.current !== val) {
+      hoverInsertIndexRef.current = val;
+      setHoverInsertIndexState(val);
+    }
+  }, []);
+
+  const calculateTrayHoverIndex = useCallback((clientX: number, clientY: number) => {
+    if (!trayRef.current) return null;
+    const rect = trayRef.current.getBoundingClientRect();
+    if (
+       clientX >= rect.left && clientX <= rect.right &&
+       clientY >= rect.top && clientY <= rect.bottom
+    ) {
+       if (isSideTray) {
+           const scrollY = trayRef.current.scrollTop;
+           // Side Tray: ~32px top padding, items are 80px + 24px gap = 104px
+           const y = clientY - rect.top + scrollY - 32; 
+           return Math.max(0, Math.round(y / 104));
+       } else {
+           const scrollX = trayRef.current.scrollLeft;
+           // Bottom Tray: ~32px left padding, items are 80px + 24px gap = 104px
+           const x = clientX - rect.left + scrollX - 32;
+           return Math.max(0, Math.round(x / 104));
+       }
+    }
+    return null;
+  }, [isSideTray]);
 
   const layout = useMemo(() => {
-    if (!image || !gridN) return null;
-    return layoutFromImage(image.naturalWidth, image.naturalHeight, gridN, size.width, size.height);
-  }, [image, gridN, size.width, size.height]);
+    if (!image || !gridN || mainSize.width === 0) return null;
+    return layoutBoardFromImage(image.naturalWidth, image.naturalHeight, gridN, stageSpaceW, stageSpaceH);
+  }, [image, gridN, stageSpaceW, stageSpaceH]);
 
-
-  // ── Start game ───────────────────────────────────────────────────────────────
-  const startGame = useCallback(
-    (n: GridN) => {
-      if (!image) return;
-      winAlertedRef.current = false;
-      const L = layoutFromImage(image.naturalWidth, image.naturalHeight, n, size.width, size.height);
-      setClusters(createScatteredClusters(n, L));
-      setGridN(n);
-      setPhase("playing");
-      setHelpOn(false);
-      setWon(false);
-    },
-    [image, size.width, size.height],
-  );
-
-  // ── Shuffle only unlocked clusters ──────────────────────────────────────────
-  const shuffleCurrent = useCallback(() => {
-    if (!layout) return;
+  const startGame = useCallback((n: GridN) => {
+    if (!image) return;
     winAlertedRef.current = false;
-    setClusters((prev) =>
-      prev.map((cl) => {
-        if (cl.locked) return cl;
-        const { x, y } = randomScatterPx(layout);
-        // Always normalize so pieces stay in-bounds after any future resize
-        const nx = layout.scatterW > 0 ? (x - layout.scatterX) / layout.scatterW : 0;
-        const ny = layout.scatterH > 0 ? (y - layout.scatterY) / layout.scatterH : 0;
-        return { ...cl, x, y, nx, ny };
-      })
-    );
+    setTrayPieces(createInitialTrayPieces(n));
+    setClusters([]);
+    setGridN(n);
+    setPhase("playing");
     setHelpOn(false);
     setWon(false);
-  }, [layout]);
+  }, [image]);
 
-  // ── Win detection ────────────────────────────────────────────────────────────
+  const shuffleCurrent = useCallback(() => {
+    setTrayPieces(prev => [...prev].sort(() => Math.random() - 0.5));
+    setHelpOn(false);
+    setWon(false);
+  }, []);
+
   useEffect(() => {
-    if (phase !== "playing" || clusters.length === 0) return;
-    if (clusters.some((cl) => !cl.locked)) return;
+    if (phase !== "playing" || gridN === null) return;
+    if (trayPieces.length > 0) return;
+    if (clusters.length === 0 || clusters.some((cl) => !cl.locked)) return;
     if (winAlertedRef.current) return;
     winAlertedRef.current = true;
     setTimeout(() => {
       setWon(true);
       markCompleted(puzzle.id);
     }, 400);
-  }, [clusters, phase, markCompleted, puzzle.id]);
+  }, [trayPieces.length, clusters, phase, gridN, markCompleted, puzzle.id]);
 
-  // ── Reproject positions on resize (the core resize fix) ──────────────────────
-  // When the layout changes (window resize / orientation change), remap every
-  // unlocked cluster's absolute x/y from its stored normalized nx/ny so pieces
-  // can never end up outside the scatter zone.
-  useEffect(() => {
-    if (!layout) return;
-    setClusters((prev) =>
-      prev.map((cl) => {
-        if (cl.locked) return cl;
-        const x = layout.scatterX + cl.nx * layout.scatterW;
-        const y = layout.scatterY + cl.ny * layout.scatterH;
-        return { ...cl, x, y };
-      })
-    );
-  }, [layout]);
-
-  // ── Flash cleanup ────────────────────────────────────────────────────────────
   const clearFlashLater = useCallback((clusterId: string, delay = 800) => {
     window.setTimeout(() => {
       setClusters((prev) =>
@@ -388,97 +336,322 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     }, delay);
   }, []);
 
-  // ── Drag handlers ────────────────────────────────────────────────────────────
-  const handleDragStart = useCallback((e: KonvaDragEvent) => {
-    e.target.moveToTop();
+  const handleTrayPiecePointerDown = useCallback((e: React.PointerEvent, piece: PieceState) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDraggedTrayPiece({
+      piece,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    });
   }, []);
 
-  const handleDragEnd = useCallback(
-    (clusterId: string, e: KonvaDragEvent) => {
-      if (!layout) return;
-      const node = e.target;
-      const absX = node.x();
-      const absY = node.y();
-      // Normalize final position into scatter-zone coords so it survives any future resize
-      const normX = layout.scatterW > 0 ? Math.max(0, Math.min(1, (absX - layout.scatterX) / layout.scatterW)) : 0;
-      const normY = layout.scatterH > 0 ? Math.max(0, Math.min(1, (absY - layout.scatterY) / layout.scatterH)) : 0;
+  useEffect(() => {
+    if (!draggedTrayPiece) {
+      setHoverInsertIndex(null);
+      return;
+    }
+    const handleMove = (e: PointerEvent) => {
+      setDraggedTrayPiece(prev => prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null);
+      
+      const newHover = calculateTrayHoverIndex(e.clientX, e.clientY);
+      setHoverInsertIndex(newHover);
 
-      setClusters((prev) => {
-        const clIdx = prev.findIndex((c) => c.id === clusterId);
-        if (clIdx === -1) return prev;
-        const cl = prev[clIdx];
-        if (cl.locked) return prev;
-
-        // Update cluster position (pixels + normalized)
-        let updated = prev.map((c) =>
-          c.id === clusterId ? { ...c, x: absX, y: absY, nx: normX, ny: normY } : c
-        );
-
-        // ── 1. Try to snap the whole cluster to the board ──────────────────
-        const movedCl = { ...cl, x: absX, y: absY };
-        const snap = trySnapToBoard(movedCl, layout);
-        if (snap) {
-          // Check board occupancy: no other locked cluster piece should sit at same col/row
-          const lockedPieceSlots = new Set(
-            updated
-              .filter((c) => c.locked && c.id !== clusterId)
-              .flatMap((c) => c.pieces.map((p) => `${p.col},${p.row}`))
-          );
-          const allFree = movedCl.pieces.every(
-            (p) => !lockedPieceSlots.has(`${p.col},${p.row}`)
-          );
-          if (allFree) {
-            node.x(snap.x);
-            node.y(snap.y);
-            updated = updated.map((c) =>
-              c.id === clusterId
-                ? { ...c, x: snap.x, y: snap.y, locked: true, snapFlash: true }
-                : c
+      if (newHover !== null) {
+          setTrayPieces(items => {
+             const dtp = draggedTrayPieceRef.current;
+             if (!dtp) return items;
+             const pieceId = dtp.piece.id;
+             const currentIndex = items.findIndex(p => p.id === pieceId);
+             if (currentIndex === -1) return items;
+             const targetIndex = Math.min(newHover, items.length - 1);
+             if (currentIndex === targetIndex) return items;
+             
+             const newItems = [...items];
+             const [moved] = newItems.splice(currentIndex, 1);
+             newItems.splice(targetIndex, 0, moved);
+             return newItems;
+          });
+      }
+    };
+    const handleUp = (e: PointerEvent) => {
+      if (!draggedTrayPiece || !layout || !mainRef.current) {
+        setDraggedTrayPiece(null);
+        setHoverInsertIndex(null);
+        return;
+      }
+      
+      const mainRect = mainRef.current.getBoundingClientRect();
+      const stageLeft = mainRect.left;
+      const stageTop = mainRect.top;
+      const stageRight = stageLeft + layout.stageW;
+      const stageBottom = stageTop + layout.stageH;
+      
+      if (
+        e.clientX >= stageLeft && e.clientX <= stageRight &&
+        e.clientY >= stageTop && e.clientY <= stageBottom
+      ) {
+        // Drop on board
+        const localX = e.clientX - stageLeft - layout.pieceW / 2;
+        const localY = e.clientY - stageTop - layout.pieceH / 2;
+        
+        const newCluster: ClusterState = {
+          id: `cl-${Date.now()}-${draggedTrayPiece.piece.id}`,
+          x: localX,
+          y: localY,
+          pieces: [{ ...draggedTrayPiece.piece, offsetX: 0, offsetY: 0 }],
+          locked: false,
+          snapFlash: false,
+        };
+        
+        setTrayPieces(items => items.filter(p => p.id !== draggedTrayPiece.piece.id));
+        setHoverInsertIndex(null);
+        setDraggedTrayPiece(null);
+        
+        setClusters(clustersPrev => {
+          let updated = [...clustersPrev, newCluster];
+          const snap = trySnapToBoard(newCluster, layout);
+          if (snap) {
+            const lockedPieceSlots = new Set(
+              clustersPrev.filter((c) => c.locked).flatMap((c) => c.pieces.map((p) => `${p.col},${p.row}`))
             );
-            setTimeout(() => clearFlashLater(clusterId, 800), 0);
-            return updated;
+            const allFree = newCluster.pieces.every((p) => !lockedPieceSlots.has(`${p.col},${p.row}`));
+            if (allFree) {
+              setTimeout(() => clearFlashLater(newCluster.id, 800), 0);
+              return updated.map(c => c.id === newCluster.id ? { ...c, x: snap.x, y: snap.y, locked: true, snapFlash: true } : c);
+            }
           }
-        }
-
-        // ── 2. Try to merge with adjacent free clusters ────────────────────
-        let merged = false;
-        let workingClusters = updated;
-        let currentClId = clusterId;
-
-        for (const other of workingClusters) {
-          if (other.id === currentClId || other.locked) continue;
-          const currentCl = workingClusters.find((c) => c.id === currentClId)!;
-          if (shouldMergeClusters(currentCl, other, layout)) {
-            const mergedCl = mergeClusters(currentCl, other, layout);
-            mergedCl.snapFlash = true;
-            workingClusters = [
-              ...workingClusters.filter((c) => c.id !== currentClId && c.id !== other.id),
-              mergedCl,
-            ];
-            currentClId = mergedCl.id;
-            merged = true;
-            break;
+          
+          let merged = false;
+          let currentClId = newCluster.id;
+          for (const other of clustersPrev) {
+            if (other.locked) continue;
+            const currentCl = updated.find((c) => c.id === currentClId)!;
+            if (shouldMergeClusters(currentCl, other, layout)) {
+              const mergedCl = mergeClusters(currentCl, other, layout);
+              mergedCl.snapFlash = true;
+              updated = [
+                ...updated.filter((c) => c.id !== currentClId && c.id !== other.id),
+                mergedCl,
+              ];
+              currentClId = mergedCl.id;
+              merged = true;
+              break;
+            }
           }
+          if (merged) {
+            setTimeout(() => clearFlashLater(currentClId, 800), 0);
+          }
+          return updated;
+        });
+      }
+      
+      setHoverInsertIndex(null);
+      setDraggedTrayPiece(null);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [draggedTrayPiece, layout, clearFlashLater, calculateTrayHoverIndex, setHoverInsertIndex]);
+
+  const handleDragStart = useCallback((clusterId: string, e: KonvaDragEvent) => {
+    setClusters(prev => {
+      const idx = prev.findIndex(c => c.id === clusterId);
+      if (idx === -1) return prev;
+      const cl = prev[idx];
+      const next = [...prev];
+      next.splice(idx, 1);
+      next.push(cl);
+      
+      const rect = mainRef.current?.getBoundingClientRect();
+      if (rect) {
+         setDraggingBoardCluster({
+           cluster: cl,
+           globalX: rect.left + e.target.x(),
+           globalY: rect.top + e.target.y()
+         });
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDragMove = useCallback((clusterId: string, e: any) => {
+    const evt = e.evt as PointerEvent | TouchEvent;
+    let clientX = 0, clientY = 0;
+    if ('clientX' in evt) {
+      clientX = evt.clientX;
+      clientY = evt.clientY;
+    } else if ('changedTouches' in evt && evt.changedTouches.length > 0) {
+      clientX = evt.changedTouches[0].clientX;
+      clientY = evt.changedTouches[0].clientY;
+    }
+    
+    // Update global visual overlay coordinates
+    const rect = mainRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDraggingBoardCluster(prev => prev ? {
+         ...prev,
+         globalX: rect.left + e.target.x(),
+         globalY: rect.top + e.target.y()
+      } : null);
+    }
+
+    setHoverInsertIndex(calculateTrayHoverIndex(clientX, clientY));
+  }, [calculateTrayHoverIndex, setHoverInsertIndex]);
+
+  const handlePieceReturnToTray = useCallback((clusterId: string) => {
+    setClusters(prev => {
+       const cluster = prev.find(c => c.id === clusterId);
+       if (cluster && !cluster.locked) {
+            setTimeout(() => {
+                setTrayPieces(items => {
+                    const existingIds = new Set(items.map(i => i.id));
+                    const newItems = cluster.pieces.filter(p => !existingIds.has(p.id)).map(p => ({ ...p, offsetX: 0, offsetY: 0}));
+                    return [...items, ...newItems];
+                });
+            }, 0);
+            return prev.filter(c => c.id !== clusterId);
+       }
+       return prev;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback((clusterId: string, e: any) => {
+    if (!layout || !mainRef.current) return;
+    const node = e.target;
+    const absX = node.x();
+    const absY = node.y();
+
+    const evt = e.evt as PointerEvent | TouchEvent;
+    let clientX = 0, clientY = 0;
+    if ('clientX' in evt) {
+      clientX = evt.clientX;
+      clientY = evt.clientY;
+    } else if ('changedTouches' in evt && evt.changedTouches.length > 0) {
+      clientX = evt.changedTouches[0].clientX;
+      clientY = evt.changedTouches[0].clientY;
+    }
+
+    const mainRect = mainRef.current.getBoundingClientRect();
+    const stageLeft = mainRect.left;
+    const stageTop = mainRect.top;
+    const stageRight = stageLeft + layout.stageW;
+    const stageBottom = stageTop + layout.stageH;
+
+    // Strict pointer escape over the stage edge
+    const isPlacedInTrayPointer = clientX < stageLeft || clientX > stageRight || clientY < stageTop || clientY > stageBottom;
+    
+    // Fuzzy logic: if the user intuitively drops the piece such that its physical bounds overlap the invisible Tray limit heavily
+    const isPlacedInTrayFuzzy = isSideTray
+      ? absX > layout.stageW - layout.pieceW * 0.4
+      : absY > layout.stageH - layout.pieceH * 0.4;
+
+    // Terminate overlay dragging
+    setDraggingBoardCluster(null);
+
+    // Capture hover index synchronously
+    const currentHoverIndex = hoverInsertIndexRef.current;
+    
+    // Guarantee cleanup of the dashed placeholder UI regardless of the final drop result
+    setHoverInsertIndex(null);
+
+    setClusters((prev) => {
+      const idx = prev.findIndex((c) => c.id === clusterId);
+      if (idx === -1) return prev;
+      const originalCl = prev[idx];
+      if (originalCl.locked) {
+        node.x(originalCl.x);
+        node.y(originalCl.y);
+        return prev;
+      }
+
+      const movedCl = { ...originalCl, x: absX, y: absY };
+      let updated = prev.map((c) => c.id === clusterId ? movedCl : c);
+
+      // Reusable tray return function
+      const processTrayReturn = (insertIndex: number | null) => {
+         setTimeout(() => {
+           setTrayPieces(items => {
+             const existingIds = new Set(items.map(i => i.id));
+             const newItems = movedCl.pieces.filter(p => !existingIds.has(p.id)).map(p => ({ ...p, offsetX: 0, offsetY: 0}));
+             
+             if (insertIndex !== null) {
+                const safeInsertAt = Math.min(insertIndex, items.length);
+                const before = items.slice(0, safeInsertAt);
+                const after = items.slice(safeInsertAt);
+                return [...before, ...newItems, ...after];
+             }
+             return [...items, ...newItems];
+           });
+         }, 0);
+         return prev.filter(c => c.id !== clusterId);
+      };
+
+      // PRIORITY 1: Explicit user intent to drop in Tray (finger is visibly outside the canvas / inside the tray)
+      if (currentHoverIndex !== null || isPlacedInTrayPointer) {
+         return processTrayReturn(currentHoverIndex);
+      }
+
+      // PRIORITY 2: Correct snapping on the board
+      const snap = trySnapToBoard(movedCl, layout);
+      if (snap) {
+        const lockedPieceSlots = new Set(
+          updated.filter((c) => c.locked && c.id !== clusterId).flatMap((c) => c.pieces.map((p) => `${p.col},${p.row}`))
+        );
+        const allFree = movedCl.pieces.every((p) => !lockedPieceSlots.has(`${p.col},${p.row}`));
+        if (allFree) {
+          node.x(snap.x);
+          node.y(snap.y);
+          setTimeout(() => clearFlashLater(clusterId, 800), 0);
+          return updated.map(c => c.id === clusterId ? { ...c, x: snap.x, y: snap.y, locked: true, snapFlash: true } : c);
         }
+      }
 
-        if (merged) {
-          const newCl = workingClusters.find((c) => c.id === currentClId)!;
-          node.x(newCl.x);
-          node.y(newCl.y);
-          setTimeout(() => clearFlashLater(currentClId, 800), 0);
-          return workingClusters;
+      // PRIORITY 3: Merging with existing board pieces
+      let merged = false;
+      let workingClusters = updated;
+      let currentClId = clusterId;
+
+      for (const other of workingClusters) {
+        if (other.id === currentClId || other.locked) continue;
+        const currentCl = workingClusters.find((c) => c.id === currentClId)!;
+        if (shouldMergeClusters(currentCl, other, layout)) {
+          const mergedCl = mergeClusters(currentCl, other, layout);
+          mergedCl.snapFlash = true;
+          workingClusters = [
+            ...workingClusters.filter((c) => c.id !== currentClId && c.id !== other.id),
+            mergedCl,
+          ];
+          currentClId = mergedCl.id;
+          merged = true;
+          break;
         }
+      }
 
-        return updated;
-      });
-    },
-    [layout, clearFlashLater],
-  );
+      if (merged) {
+        const newCl = workingClusters.find((c) => c.id === currentClId)!;
+        node.x(newCl.x);
+        node.y(newCl.y);
+        setTimeout(() => clearFlashLater(currentClId, 800), 0);
+        return workingClusters;
+      }
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
+      // PRIORITY 4: Fuzzy Tray Drop (Piece was dragged near the boundary wall and didn't snap/merge anywhere)
+      if (isPlacedInTrayFuzzy) {
+         return processTrayReturn(null);
+      }
+
+      // PRIORITY 5: Leave loose piece on the board
+      return updated;
+    });
+  }, [layout, clearFlashLater, isSideTray, setHoverInsertIndex]);
+
   return (
-    <div className="flex h-[100dvh] w-full flex-col-reverse md:flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden" style={{ backgroundColor: '#FFEDEA' }}>
-      <header className="z-10 flex flex-wrap items-center gap-3 border-t md:border-t-0 md:border-b border-puzzle-primary/20 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm transition-all duration-300">
+    <div className="flex h-[100dvh] w-full flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden touch-none">
+      <header className="z-10 flex flex-wrap items-center gap-3 border-b border-puzzle-primary/20 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm transition-all duration-300">
         <button
           type="button"
           onClick={onBack}
@@ -486,7 +659,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         >
           Retour
         </button>
-        <div className="order-2 min-w-0 flex-1 sm:order-2 sm:text-center">
+        <div className="order-2 min-w-0 flex-1 text-center">
           <p className="text-xs uppercase tracking-wider text-puzzle-primaryDark mb-0.5">
             {puzzle.theme}
           </p>
@@ -495,7 +668,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
           </h1>
         </div>
         {phase === "playing" && (
-          <div className="order-3 flex w-full flex-wrap justify-end gap-2 sm:order-3 sm:w-auto">
+          <div className="order-3 flex flex-wrap justify-end gap-2 shrink-0">
             <button
               type="button"
               onClick={shuffleCurrent}
@@ -525,15 +698,15 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         )}
       </header>
 
-      <main ref={wrapperRef} className="flex flex-1 flex-col items-center justify-center w-full h-full min-h-0 relative touch-none">
+      <main ref={mainRef} className="flex-1 flex min-h-0 min-w-0 relative">
         {error && (
-          <p className="text-center text-red-600" role="alert">
+          <div className="m-auto text-center text-red-600" role="alert">
             {error}
-          </p>
+          </div>
         )}
 
         {phase === "config" && !error && (
-          <div className="flex w-full max-w-lg flex-col items-center gap-8 rounded-3xl border border-white bg-white/60 backdrop-blur px-8 py-10 shadow-lg shadow-puzzle-primary/5">
+          <div className="m-auto flex w-full max-w-lg flex-col items-center gap-8 rounded-3xl border border-white bg-white/60 backdrop-blur px-8 py-10 shadow-lg shadow-puzzle-primary/5">
             <div className="text-center space-y-1">
               <h2 className="text-3xl font-extrabold text-puzzle-text">
                 Difficulté
@@ -559,78 +732,302 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         )}
 
         {phase === "playing" && layout && image && (
-          <div className="relative w-full h-full">
-            {won && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[2px] rounded-2xl overflow-hidden">
-                <Fireworks />
-                <div className="relative z-20 bg-white/95 px-10 py-8 rounded-[2.5rem] shadow-2xl shadow-puzzle-accent/30 border border-white/60 text-center transform scale-110 animate-in fade-in zoom-in duration-500">
-                  <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-puzzle-accent/20 text-3xl">
-                    🎉
+          <div className={`flex w-full h-full ${isSideTray ? 'flex-row' : 'flex-col'}`}>
+            <div className="flex-[1_1_100%] relative min-w-0 min-h-0">
+              {won && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/10 backdrop-blur-xl rounded-2xl overflow-hidden transition-all duration-700 animate-in fade-in">
+                  <div className="absolute inset-0 z-0">
+                    <img src={puzzle.url} alt="" className="w-full h-full object-cover blur-2xl opacity-40 scale-110" />
                   </div>
-                  <h3 className="text-3xl font-extrabold text-puzzle-text mb-2 tracking-tight">Félicitations !</h3>
-                  <p className="text-puzzle-primaryDark font-semibold mb-8">Vous avez brillamment assemblé toutes les pièces.</p>
-                  
-                  <button
-                    type="button"
-                    onClick={onBack}
-                    className="w-full min-h-[52px] rounded-2xl bg-puzzle-primary px-8 py-3 text-base font-bold text-white shadow-lg shadow-puzzle-primary/30 transition-all hover:bg-puzzle-primaryDark hover:scale-[1.02] hover:shadow-xl active:scale-95"
-                  >
-                    Retour au menu
-                  </button>
+                  <Fireworks />
+                  <div className="relative z-20 bg-white/90 backdrop-blur-md px-10 py-8 rounded-[2.5rem] shadow-2xl shadow-puzzle-accent/30 border border-white/60 text-center transform scale-110 animate-in zoom-in duration-500 max-w-[90%]">
+                    <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-puzzle-accent/20 text-3xl">
+                      🎉
+                    </div>
+                    <h3 className="text-3xl font-extrabold text-puzzle-text mb-2 tracking-tight">Félicitations !</h3>
+                    <p className="text-puzzle-primaryDark font-semibold mb-8">Vous avez brillamment assemblé toutes les pièces.</p>
+                    <div className="flex flex-col gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowFullImage(true)}
+                        className="w-full min-h-[52px] rounded-2xl bg-white border-2 border-puzzle-primary/20 px-8 py-3 text-base font-bold text-puzzle-primary transition-all hover:bg-puzzle-primary/5 hover:border-puzzle-primary hover:scale-[1.02] active:scale-95 shadow-sm"
+                      >
+                        Admirer l'œuvre ✨
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onBack}
+                        className="w-full min-h-[52px] rounded-2xl bg-puzzle-primary px-8 py-3 text-base font-bold text-white shadow-lg shadow-puzzle-primary/30 transition-all hover:bg-puzzle-primaryDark hover:scale-[1.02] hover:shadow-xl active:scale-95"
+                      >
+                        Retour au menu
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
-            <Stage
-              width={layout.stageW}
-              height={layout.stageH}
-              pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
-            >
-              {/* Background layer: board outline + help image */}
-              <Layer listening={false}>
-                {helpOn && (
-                  /* eslint-disable-next-line jsx-a11y/alt-text */
-                  <Image
-                    image={image}
+              )}
+              <Stage
+                width={layout.stageW}
+                height={layout.stageH}
+                pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
+              >
+                <Layer listening={false}>
+                  {helpOn && (
+                    <KonvaImage
+                      image={image}
+                      x={layout.boardX}
+                      y={layout.boardY}
+                      width={layout.displayW}
+                      height={layout.displayH}
+                      opacity={1}
+                    />
+                  )}
+                  <Rect
                     x={layout.boardX}
                     y={layout.boardY}
                     width={layout.displayW}
                     height={layout.displayH}
-                    opacity={0.15}
+                    fill={helpOn ? "transparent" : "rgba(255,255,255,0.35)"}
+                    stroke="#d4d4d8"
+                    strokeWidth={1}
                   />
-                )}
-                <Rect
-                  x={layout.boardX}
-                  y={layout.boardY}
-                  width={layout.displayW}
-                  height={layout.displayH}
-                  fill="rgba(255,255,255,0.35)"
-                  stroke="#d4d4d8"
-                  strokeWidth={1}
-                />
-              </Layer>
+                </Layer>
+                <Layer>
+                  {clusters.map((cluster) => (
+                    <ClusterGroup
+                      key={cluster.id}
+                      cluster={cluster}
+                      image={image}
+                      layout={layout}
+                      isDragging={draggingBoardCluster?.cluster.id === cluster.id}
+                      onDragStart={(e) => handleDragStart(cluster.id, e)}
+                      onDragMove={(e) => handleDragMove(cluster.id, e)}
+                      onDragEnd={(e) => handleDragEnd(cluster.id, e)}
+                      onDblClick={() => handlePieceReturnToTray(cluster.id)}
+                      onDblTap={() => handlePieceReturnToTray(cluster.id)}
+                    />
+                  ))}
+                </Layer>
+              </Stage>
+              
+              {/* Permanent Unclipped Drag Overlay for Board Pieces */}
+              {windowSize.w > 0 && draggingBoardCluster && (
+                <div className="fixed inset-0 pointer-events-none z-[100] touch-none">
+                  <Stage
+                    width={windowSize.w}
+                    height={windowSize.h}
+                    pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
+                  >
+                    <Layer>
+                       <Group 
+                          x={draggingBoardCluster.globalX} 
+                          y={draggingBoardCluster.globalY}
+                       >
+                         {draggingBoardCluster.cluster.pieces.map((piece) => (
+                           <PuzzlePiece
+                             key={piece.id}
+                             piece={piece}
+                             image={image}
+                             layout={layout}
+                             isLocked={false}
+                             snapFlash={false}
+                           />
+                         ))}
+                       </Group>
+                    </Layer>
+                  </Stage>
+                </div>
+              )}
+            </div>
+            
+            {/* Piece Tray component */}
+            <div 
+              ref={trayRef}
+              className={`flex border-white/10 bg-black/40 backdrop-blur-2xl z-50 overflow-auto scroll-smooth ${
+                isSideTray 
+                  ? 'w-[160px] flex-col border-l shadow-[-10px_0_30px_rgba(0,0,0,0.3)]' 
+                  : 'h-[150px] w-full flex-row border-t shadow-[0_-10px_30px_rgba(0,0,0,0.3)]'
+              }`}
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              <div 
+                className={`flex ${
+                  isSideTray 
+                    ? 'flex-col items-center py-8 gap-6 w-full min-h-max' 
+                    : 'flex-row items-center px-8 gap-6 h-full min-w-max pb-[env(safe-area-inset-bottom,16px)]'
+                }`}
+              >
+                {(() => {
+                  const isHTMLDrag = draggedTrayPiece !== null;
+                  const mappedItems = [...trayPieces];
+                  
+                  if (!isHTMLDrag && hoverInsertIndexState !== null) {
+                     const safeInsertAt = Math.min(hoverInsertIndexState, mappedItems.length);
+                     mappedItems.splice(safeInsertAt, 0, { id: 'placeholder', isPlaceholder: true } as any);
+                  }
 
-              {/* Piece clusters layer */}
-              <Layer>
-                {clusters.map((cluster) => (
-                  <ClusterGroup
-                    key={cluster.id}
-                    cluster={cluster}
-                    image={image}
-                    layout={layout}
-                    onDragStart={handleDragStart}
-                    onDragEnd={(e) => handleDragEnd(cluster.id, e)}
-                  />
-                ))}
-              </Layer>
-            </Stage>
+                  return mappedItems.map((piece: any) => {
+                    if (piece.isPlaceholder) {
+                       return (
+                         <div 
+                           key="placeholder" 
+                           className="w-[80px] h-[80px] shrink-0 border-2 border-dashed border-white/30 rounded-xl transition-all duration-300" 
+                         />
+                       );
+                    }
+                    
+                    const isDragged = draggedTrayPiece?.piece.id === piece.id;
+                    return (
+                      <div 
+                         key={piece.id} 
+                         className="shrink-0 transition-all duration-300 flex items-center justify-center animate-in fade-in zoom-in-75 slide-in-from-bottom-2" 
+                         style={{ 
+                           opacity: isDragged ? 0 : 1, 
+                         }}
+                      >
+                        <TrayPieceItem
+                          piece={piece}
+                          image={image}
+                          layout={layout}
+                          onPointerDown={(e) => handleTrayPiecePointerDown(e, piece)}
+                        />
+                      </div>
+                    )
+                  });
+                })()}
+              </div>
+            </div>
           </div>
         )}
       </main>
+
+      {/* Floating Dragged Piece */}
+      {draggedTrayPiece && image && layout && (
+        <div 
+          className="fixed pointer-events-none z-[10000] drop-shadow-[0_20px_30px_rgba(0,0,0,0.5)]"
+          style={{
+             left: draggedTrayPiece.clientX - layout.pieceW / 2,
+             top: draggedTrayPiece.clientY - layout.pieceH / 2,
+             transform: 'scale(1.15)',
+          }}
+        >
+          <PieceSVG piece={draggedTrayPiece.piece} image={image} layout={layout} />
+        </div>
+      )}
+
+      {showFullImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex flex-col bg-black/95 backdrop-blur-sm animate-in fade-in zoom-in duration-300 touch-none"
+          onClick={() => setShowFullImage(false)}
+        >
+          <div className="absolute top-0 left-0 right-0 z-[120] flex items-center justify-between p-6 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowFullImage(false); }}
+              className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/20 backdrop-blur-md px-5 py-2.5 text-sm font-bold text-white border border-white/30 transition-all hover:bg-white/30 hover:scale-105 active:scale-95"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+              Retour
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onBack(); }}
+              className="pointer-events-auto flex items-center gap-2 rounded-full bg-puzzle-primary px-5 py-2.5 text-sm font-bold text-white shadow-xl transition-all hover:bg-puzzle-primaryDark hover:scale-105 active:scale-95"
+            >
+              Quitter le jeu
+            </button>
+          </div>
+          
+          <div className="relative flex-1 flex items-center justify-center p-4 md:p-12 pointer-events-none">
+            <img 
+              src={puzzle.url} 
+              alt={puzzle.title} 
+              className="max-w-full max-h-full object-contain shadow-2xl pointer-events-auto rounded-lg"
+              style={{ boxShadow: '0 0 80px rgba(0,0,0,0.5)' }}
+            />
+          </div>
+          
+          <div className="absolute bottom-10 left-0 right-0 text-center pointer-events-none px-6">
+            <p className="inline-block px-6 py-2 rounded-full bg-black/40 backdrop-blur-md text-white/80 text-sm font-medium border border-white/10 uppercase tracking-widest">
+              {puzzle.title} — {puzzle.theme}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function PieceSVG({ piece, image, layout }: { piece: PieceState; image: HTMLImageElement; layout: Layout }) {
+  const pathData = useMemo(() => getPiecePath(layout.pieceW, layout.pieceH, piece.shapeData), [layout.pieceW, layout.pieceH, piece.shapeData]);
+  
+  return (
+    <svg 
+      width={layout.pieceW} 
+      height={layout.pieceH} 
+      style={{ overflow: 'visible', filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))' }}
+    >
+      <clipPath id={`clip-${piece.id}`}>
+        <path d={pathData} />
+      </clipPath>
+      <image
+        href={image.src}
+        width={layout.displayW}
+        height={layout.displayH}
+        x={-piece.col * layout.pieceW}
+        y={-piece.row * layout.pieceH}
+        clipPath={`url(#clip-${piece.id})`}
+      />
+      <path d={pathData} fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+function TrayPieceItem({ 
+  piece, 
+  image, 
+  layout, 
+  onPointerDown 
+}: { 
+  piece: PieceState; 
+  image: HTMLImageElement; 
+  layout: Layout; 
+  onPointerDown: (e: React.PointerEvent) => void 
+}) {
+  const TARGET_SIZE = 80; // Uniform baseline scale size for pieces in Tray
+  const pieceSize = Math.max(layout.pieceW, layout.pieceH);
+  const scale = TARGET_SIZE / pieceSize; // Calculate proportional scale up/down
+  
+  return (
+    <div 
+      className="relative cursor-grab active:cursor-grabbing hover:scale-110 active:scale-95 transition-all duration-300 touch-none drop-shadow-lg hover:drop-shadow-2xl flex items-center justify-center"
+      onPointerDown={onPointerDown}
+      style={{
+        width: TARGET_SIZE,
+        height: TARGET_SIZE,
+        WebkitTouchCallout: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <div 
+        style={{ 
+          width: layout.pieceW, 
+          height: layout.pieceH, 
+          transform: `scale(${scale})`, 
+          transformOrigin: 'center' 
+        }}
+      >
+        <PieceSVG piece={piece} image={image} layout={layout} />
+      </div>
+    </div>
+  );
+}
 
 function DifficultyButton({ label, parts, onClick }: { label: string; parts: number; onClick: () => void }) {
   return (
@@ -642,7 +1039,7 @@ function DifficultyButton({ label, parts, onClick }: { label: string; parts: num
       <div className="flex items-center gap-2 text-2xl font-black text-puzzle-text transition-colors group-hover:text-black">
         {parts}
         <span className="text-xl font-medium text-puzzle-text/40">×</span>
-        <svg viewBox="0 0 24 24" className="w-6 h-6 opacity-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" className="w-6 h-6 opacity-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M10 21H3V14H5A2 2 0 1 0 5 10H3V3H10V5A2 2 0 1 1 14 5V3H21V10H19A2 2 0 1 0 19 14H21V21H14V19A2 2 0 1 1 10 19V21Z" />
         </svg>
       </div>
@@ -655,22 +1052,34 @@ function ClusterGroup({
   cluster,
   image,
   layout,
+  isDragging,
   onDragStart,
+  onDragMove,
   onDragEnd,
+  onDblClick,
+  onDblTap,
 }: {
   cluster: ClusterState;
   image: HTMLImageElement;
   layout: Layout;
+  isDragging?: boolean;
   onDragStart: (e: KonvaDragEvent) => void;
+  onDragMove?: (e: KonvaDragEvent) => void;
   onDragEnd: (e: KonvaDragEvent) => void;
+  onDblClick?: () => void;
+  onDblTap?: () => void;
 }) {
   return (
     <Group
       x={cluster.x}
       y={cluster.y}
+      opacity={isDragging ? 0.001 : 1}
       draggable={!cluster.locked}
       onDragStart={onDragStart}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
+      onDblClick={onDblClick}
+      onDblTap={onDblTap}
     >
       {cluster.pieces.map((piece) => (
         <PuzzlePiece

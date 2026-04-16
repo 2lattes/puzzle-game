@@ -40,3 +40,7 @@ yarn-error.log*
 
 # npm cache
 .npm_cache/
+\n# Tool scratch files\nscratch/
+
+# Tool scratch files
+scratch/

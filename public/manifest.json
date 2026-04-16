@@ -4,7 +4,7 @@
   "description": "Assemblez des puzzles artisanaux et détendez-vous avec Mina Puzzle.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFEDEA",
+  "background_color": "#E2C0BB",
   "theme_color": "#A8655D",
   "icons": [
     {

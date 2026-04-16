@@ -8,17 +8,19 @@ export function useElementSize<T extends HTMLElement = HTMLDivElement>() {
     if (!ref.current) return;
     
     // Initial size
-    setSize({
-      width: ref.current.offsetWidth,
-      height: ref.current.offsetHeight,
-    });
+    const initialWidth = Math.round(ref.current.offsetWidth);
+    const initialHeight = Math.round(ref.current.offsetHeight);
+    setSize({ width: initialWidth, height: initialHeight });
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        setSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
+        const newWidth = Math.round(entry.contentRect.width);
+        const newHeight = Math.round(entry.contentRect.height);
+        
+        setSize((prev) => {
+          if (prev.width === newWidth && prev.height === newHeight) return prev;
+          return { width: newWidth, height: newHeight };
         });
       }
     });

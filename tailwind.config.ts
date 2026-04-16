@@ -9,8 +9,8 @@ export default {
     extend: {
       colors: {
         puzzle: {
-          bg: "#FFEDEA",
-          board: "#fde4df",
+          bg: "#E2C0BB",
+          board: "#D4A8A2",
           primary: "#A8655D",
           primaryDark: "#7D3F37",
           secondary: "#926F6A",

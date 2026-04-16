@@ -106,6 +106,8 @@ function HeartButton({
       }`}
     >
       <svg
+        width="20"
+        height="20"
         viewBox="0 0 24 24"
         className="h-5 w-5"
         aria-hidden="true"
@@ -127,7 +129,7 @@ function HeartButton({
 function CheckmarkIcon() {
   return (
     <div className="pointer-events-none absolute left-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-puzzle-tertiary text-white shadow-md backdrop-blur-md">
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
     </div>
@@ -245,7 +247,7 @@ export function SelectionView({
               onClick={onBack}
               className="group flex w-fit items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-puzzle-secondary shadow-sm ring-1 ring-puzzle-primary/20 transition-all hover:bg-puzzle-bg hover:text-puzzle-text hover:ring-puzzle-primary/40"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
               </svg>
@@ -295,7 +297,7 @@ export function SelectionView({
                 className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-black transition-transform hover:scale-105 hover:bg-slate-100"
               >
                 Importer une image
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12" />
                   <polyline points="12 5 19 12 12 19" />
                 </svg>
@@ -310,7 +312,7 @@ export function SelectionView({
         {displayedPuzzles.length === 0 && activeTab === "recent" && (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-200/50">
-              <svg viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
+              <svg width="36" height="36" viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
                 <circle cx="12" cy="12" r="9" />
                 <polyline points="12 7 12 12 15 15" />
               </svg>
@@ -322,7 +324,7 @@ export function SelectionView({
         {displayedPuzzles.length === 0 && activeTab === "favorites" && (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-200/50">
-              <svg viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
+              <svg width="36" height="36" viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
               </svg>
             </div>
@@ -332,7 +334,7 @@ export function SelectionView({
         {displayedPuzzles.length === 0 && activeTab === "completed" && (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-200/50">
-              <svg viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <svg width="36" height="36" viewBox="0 0 24 24" className="h-9 w-9 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
@@ -408,7 +410,7 @@ export function SelectionView({
           onClick={() => onNavigateCategories?.()}
           label="Catégories"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1.5" />
               <rect x="14" y="3" width="7" height="7" rx="1.5" />
               <rect x="14" y="14" width="7" height="7" rx="1.5" />
@@ -421,7 +423,7 @@ export function SelectionView({
           onClick={() => onNavigateRecent?.()}
           label="Récent"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="9" />
               <polyline points="12 7 12 12 15 15" />
             </svg>
@@ -432,7 +434,7 @@ export function SelectionView({
           onClick={() => onNavigateFavorites?.()}
           label="Favoris"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
           }
@@ -442,7 +444,7 @@ export function SelectionView({
           onClick={() => onNavigateCompleted?.()}
           label="Terminés"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           }
@@ -452,7 +454,7 @@ export function SelectionView({
           onClick={() => onNavigateImported?.()}
           label="Importés"
           icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
           }

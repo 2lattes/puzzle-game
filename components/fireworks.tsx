@@ -7,7 +7,7 @@ const COLORS = [
   "#C9897F", // puzzle.accent — soft coral
   "#96703D", // puzzle.tertiary — warm gold-brown
   "#7D3F37", // puzzle.primaryDark — deep terracotta
-  "#FFEDEA", // puzzle.bg — warm blush white
+  "#E2C0BB", // puzzle.bg — warm blush
   "#F5C5BB", // light coral
   "#E8A87C", // warm amber
 ];
