@@ -11,6 +11,7 @@ type CategoryViewProps = {
   onNavigateFavorites?: () => void;
   onNavigateImported?: () => void;
   onNavigateCompleted?: () => void;
+  onNavigateInProgress?: () => void;
   onBack?: () => void;
 };
 
@@ -161,6 +162,7 @@ export function CategoryView({
   onNavigateFavorites,
   onNavigateImported,
   onNavigateCompleted,
+  onNavigateInProgress,
   onBack,
 }: CategoryViewProps) {
   /** Count puzzles per category */
@@ -168,7 +170,7 @@ export function CategoryView({
     puzzles.filter((p) => p.theme === theme).length;
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-puzzle-bg font-sans text-puzzle-text pb-32">
+    <div className="relative flex min-h-[100dvh] flex-col bg-puzzle-bg font-sans text-puzzle-text pb-48">
       <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-6 px-4 py-10 md:px-8 md:py-12">
 
         {/* Header */}
@@ -221,7 +223,7 @@ export function CategoryView({
       </div>
 
       {/* Floating Bottom Nav */}
-      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-2 rounded-[2rem] bg-white/90 p-2 shadow-2xl backdrop-blur-xl border border-puzzle-primary/10">
+      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-2 rounded-[2rem] bg-white/90 p-3 shadow-2xl backdrop-blur-xl border border-puzzle-primary/10">
         {/* Catégories (active) */}
         <NavButton
           active={true}
@@ -256,6 +258,17 @@ export function CategoryView({
           icon={
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+          }
+        />
+        {/* En cours */}
+        <NavButton
+          active={false}
+          onClick={() => onNavigateInProgress?.()}
+          label="En cours"
+          icon={
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
           }
         />

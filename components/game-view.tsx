@@ -8,6 +8,7 @@ import { generateShapeData, getPiecePath, type PieceShapeData } from "@/lib/puzz
 import { useElementSize } from "@/hooks/use-element-size";
 import { Fireworks } from "./fireworks";
 import { useCompleted } from "@/hooks/use-completed";
+import { useSaves, writeSaveSync, type PuzzleSave } from "@/hooks/use-saves";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -230,6 +231,38 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const [showFullImage, setShowFullImage] = useState(false);
   const winAlertedRef = useRef(false);
   const { markCompleted } = useCompleted();
+  const { getSave, writeSave, deleteSave } = useSaves();
+
+  // ─── Timer ────────────────────────────────────────────────────────────────────
+  const elapsedRef = useRef(0);       // total elapsed seconds (persisted)
+  const timerStartRef = useRef<number | null>(null); // Date.now() when last started
+
+  const getElapsed = useCallback((): number => {
+    if (timerStartRef.current === null) return elapsedRef.current;
+    return elapsedRef.current + Math.floor((Date.now() - timerStartRef.current) / 1000);
+  }, []);
+
+  const startTimer = useCallback(() => {
+    timerStartRef.current = Date.now();
+  }, []);
+
+  const pauseTimer = useCallback(() => {
+    if (timerStartRef.current !== null) {
+      elapsedRef.current += Math.floor((Date.now() - timerStartRef.current) / 1000);
+      timerStartRef.current = null;
+    }
+  }, []);
+
+  // ─── Refs for beforeunload (must read current state synchronously) ────────────
+  const trayPiecesRef = useRef<PieceState[]>([]);
+  const clustersRef = useRef<ClusterState[]>([]);
+  const phaseRef = useRef<Phase>("config");
+  const gridNRef = useRef<GridN | null>(null);
+
+  useEffect(() => { trayPiecesRef.current = trayPieces; }, [trayPieces]);
+  useEffect(() => { clustersRef.current = clusters; }, [clusters]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => { gridNRef.current = gridN; }, [gridN]);
 
   const [mainRef, mainSize] = useElementSize<HTMLElement>();
   const [windowSize, setWindowSize] = useState({ 
@@ -301,22 +334,146 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     return layoutBoardFromImage(image.naturalWidth, image.naturalHeight, gridN, stageSpaceW, stageSpaceH);
   }, [image, gridN, stageSpaceW, stageSpaceH, mainSize.width]);
 
+  // ─── Reconstruct full PieceState from a save ────────────────────────────────
+  const restoreFromSave = useCallback((save: PuzzleSave) => {
+    const n = save.gridN as GridN;
+    const shapes = generateShapeData(n);
+
+    const buildPiece = (id: string, offsetX = 0, offsetY = 0): PieceState => {
+      const parts = id.split("-"); // "p-{row}-{col}"
+      const row = parseInt(parts[1], 10);
+      const col = parseInt(parts[2], 10);
+      return { id, col, row, offsetX, offsetY, shapeData: shapes[row][col] };
+    };
+
+    const restoredTray: PieceState[] = save.trayPieceIds.map((id) => buildPiece(id));
+
+    const restoredClusters: ClusterState[] = save.clusters.map((sc) => ({
+      id: sc.id,
+      x: sc.x,
+      y: sc.y,
+      locked: sc.locked,
+      snapFlash: false,
+      pieces: sc.pieceOffsets.map((po) => buildPiece(po.id, po.offsetX, po.offsetY)),
+    }));
+
+    elapsedRef.current = save.elapsedSeconds;
+    timerStartRef.current = null;
+
+    winAlertedRef.current = false;
+    setTrayPieces(restoredTray);
+    setClusters(restoredClusters);
+    setGridN(n);
+    setPhase("playing");
+    setHelpOn(false);
+    setWon(false);
+    startTimer();
+  }, [startTimer]);
+
   const startGame = useCallback((n: GridN) => {
     if (!image) return;
+    // Check for an existing save for this puzzle
+    const existing = getSave(puzzle.id);
+    if (existing && existing.gridN === n) {
+      // Option A: auto-restore from save
+      restoreFromSave(existing);
+      return;
+    }
+    // Fresh game
     winAlertedRef.current = false;
+    elapsedRef.current = 0;
+    timerStartRef.current = null;
     setTrayPieces(createInitialTrayPieces(n));
     setClusters([]);
     setGridN(n);
     setPhase("playing");
     setHelpOn(false);
     setWon(false);
-  }, [image]);
+    startTimer();
+  }, [image, getSave, puzzle.id, restoreFromSave, startTimer]);
+
+  // Auto-restore on mount if a save exists and image is loaded
+  const autoRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!image || autoRestoredRef.current) return;
+    const existing = getSave(puzzle.id);
+    if (existing) {
+      autoRestoredRef.current = true;
+      restoreFromSave(existing);
+    }
+  }, [image, getSave, puzzle.id, restoreFromSave]);
 
   const shuffleCurrent = useCallback(() => {
     setTrayPieces(prev => [...prev].sort(() => Math.random() - 0.5));
     setHelpOn(false);
-    setWon(false);
   }, []);
+
+  // ─── Build a PuzzleSave snapshot from current React state ────────────────────
+  const buildSave = useCallback(
+    (currentTray: PieceState[], currentClusters: ClusterState[], currentGridN: GridN): PuzzleSave => ({
+      puzzleId: puzzle.id,
+      gridN: currentGridN,
+      savedAt: new Date().toISOString(),
+      elapsedSeconds: getElapsed(),
+      trayPieceIds: currentTray.map((p) => p.id),
+      clusters: currentClusters.map((cl) => ({
+        id: cl.id,
+        x: cl.x,
+        y: cl.y,
+        locked: cl.locked,
+        pieceOffsets: cl.pieces.map((p) => ({ id: p.id, offsetX: p.offsetX, offsetY: p.offsetY })),
+      })),
+    }),
+    [puzzle.id, getElapsed],
+  );
+
+  // ─── Persist save when clusters or tray changes (piece placed) ───────────────
+  const saveOnChangeRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "playing" || gridN === null || won) return;
+    // Skip the very first render after mount
+    if (!saveOnChangeRef.current) {
+      saveOnChangeRef.current = true;
+      return;
+    }
+    const save = buildSave(trayPieces, clusters, gridN);
+    writeSave(save);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clusters, trayPieces]);
+
+  // ─── Periodic auto-save every 30s ────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== "playing" || gridN === null || won) return;
+    const id = setInterval(() => {
+      const save = buildSave(trayPiecesRef.current, clustersRef.current, gridNRef.current!);
+      writeSave(save);
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [phase, gridN, won, buildSave, writeSave]);
+
+  // ─── Save on tab/window close (beforeunload) ─────────────────────────────────
+  useEffect(() => {
+    const handler = () => {
+      if (phaseRef.current !== "playing" || gridNRef.current === null) return;
+      const save: PuzzleSave = {
+        puzzleId: puzzle.id,
+        gridN: gridNRef.current,
+        savedAt: new Date().toISOString(),
+        elapsedSeconds: getElapsed(),
+        trayPieceIds: trayPiecesRef.current.map((p) => p.id),
+        clusters: clustersRef.current.map((cl) => ({
+          id: cl.id,
+          x: cl.x,
+          y: cl.y,
+          locked: cl.locked,
+          pieceOffsets: cl.pieces.map((p) => ({ id: p.id, offsetX: p.offsetX, offsetY: p.offsetY })),
+        })),
+      };
+      writeSaveSync(save);
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [puzzle.id, getElapsed]);
 
   useEffect(() => {
     if (phase !== "playing" || gridN === null) return;
@@ -327,8 +484,10 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     setTimeout(() => {
       setWon(true);
       markCompleted(puzzle.id);
+      deleteSave(puzzle.id); // ✅ clean up save on completion
+      pauseTimer();
     }, 400);
-  }, [trayPieces.length, clusters, phase, gridN, markCompleted, puzzle.id]);
+  }, [trayPieces.length, clusters, phase, gridN, markCompleted, puzzle.id, deleteSave, pauseTimer]);
 
   const clearFlashLater = useCallback((clusterId: string, delay = 800) => {
     window.setTimeout(() => {
