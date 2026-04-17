@@ -21,6 +21,8 @@ const LANDSCAPE_H = 1536;
 const PORTRAIT_W = 1536;
 const PORTRAIT_H = 2048;
 
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in ms
+
 // ─── Category → search query mapping ─────────────────────────────────────────
 
 export const CATEGORY_QUERY_MAP: Record<string, string> = {
@@ -82,6 +84,15 @@ export interface SearchResult {
   total_pages: number;
 }
 
+// ─── Cache ────────────────────────────────────────────────────────────────────
+
+interface CachedSearch {
+  data: SearchResult;
+  timestamp: number;
+}
+
+const searchCache: Record<string, CachedSearch> = {};
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 function getAccessKey(): string {
@@ -116,8 +127,17 @@ export async function searchPhotos(
   page = 1,
   orientation: "landscape" | "portrait" | "squarish" = "landscape"
 ): Promise<SearchResult> {
+  const cacheKey = `${query.trim().toLowerCase()}_${orientation}_${page}`;
+  const now = Date.now();
+
+  // Check cache
+  const cached = searchCache[cacheKey];
+  if (cached && now - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+
   const params = new URLSearchParams({
-    query,
+    query: query.trim(),
     page: String(page),
     per_page: "10",
     orientation,
@@ -125,7 +145,7 @@ export async function searchPhotos(
 
   const res = await fetch(`${BASE_URL}/search/photos?${params}`, {
     headers: buildHeaders(),
-    // Next.js: no-store to avoid caching stale search results
+    // Next.js: no-store to avoid caching stale search results (we handle our own memory cache)
     cache: "no-store",
   });
 
@@ -134,7 +154,32 @@ export async function searchPhotos(
     throw new Error(`Unsplash API error ${res.status}: ${text}`);
   }
 
-  return res.json() as Promise<SearchResult>;
+  const data = (await res.json()) as SearchResult;
+
+  // Store in cache
+  searchCache[cacheKey] = {
+    data,
+    timestamp: now,
+  };
+
+  return data;
+}
+
+/**
+ * Fetch a single photo by ID.
+ */
+export async function getPhoto(id: string): Promise<UnsplashPhoto> {
+  const res = await fetch(`${BASE_URL}/photos/${id}`, {
+    headers: buildHeaders(),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Unsplash API error ${res.status}: ${text}`);
+  }
+
+  return res.json() as Promise<UnsplashPhoto>;
 }
 
 /**

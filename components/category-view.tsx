@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import { PUZZLE_THEMES } from "@/lib/sample-puzzles";
 import type { PuzzleImage } from "@/types";
 
@@ -21,7 +22,7 @@ function getCategoryHeroUrl(
   puzzles: PuzzleImage[]
 ): string | null {
   const match = puzzles.find((p) => p.theme === theme);
-  return match?.url ?? null;
+  return match?.thumbUrl || match?.url || null;
 }
 
 /** Pretty emoji badge per category */
@@ -50,6 +51,8 @@ type CategoryCardProps = {
 };
 
 function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
+  const [error, setError] = useState(false);
+
   return (
     <button
       type="button"
@@ -68,7 +71,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
         className="relative w-full overflow-hidden rounded-[1.5rem] aspect-square shadow-md ring-1 ring-puzzle-primary/20 transition-all duration-300 group-hover:shadow-xl group-hover:ring-puzzle-primary/50 group-hover:-translate-y-1"
       >
         {/* Background image */}
-        {heroUrl ? (
+        {heroUrl && !error ? (
           <div className="absolute inset-0">
             {shouldUseNextImage(heroUrl) ? (
               <Image
@@ -78,6 +81,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                 className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                 quality={80}
+                onError={() => setError(true)}
               />
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -86,6 +90,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
                 alt={theme}
                 className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                 loading="lazy"
+                onError={() => setError(true)}
               />
             )}
           </div>

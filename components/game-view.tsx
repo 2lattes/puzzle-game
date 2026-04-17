@@ -5,6 +5,7 @@ import { Group, Image as KonvaImage, Layer, Path, Rect, Stage } from "react-konv
 import type Konva from "konva";
 import type { PuzzleImage } from "@/types";
 import { generateShapeData, getPiecePath, type PieceShapeData } from "@/lib/puzzle-shapes";
+import { shuffleAsDerangement } from "@/lib/shuffle";
 import { useElementSize } from "@/hooks/use-element-size";
 import { Fireworks } from "./fireworks";
 import { useCompleted } from "@/hooks/use-completed";
@@ -131,7 +132,8 @@ function createInitialTrayPieces(gridN: GridN): PieceState[] {
       });
     }
   }
-  return pieces.sort(() => Math.random() - 0.5);
+  // Fisher-Yates avec dérangement garanti : aucune pièce à son index d'origine
+  return shuffleAsDerangement(pieces);
 }
 
 // ─── Adjacency & merge helpers ────────────────────────────────────────────────
@@ -219,6 +221,8 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const [gridN, setGridN] = useState<GridN | null>(null);
   
   const [trayPieces, setTrayPieces] = useState<PieceState[]>([]);
+  // Incrémenté à chaque mélange pour déclencher l'animation CSS du bac
+  const [shuffleKey, setShuffleKey] = useState(0);
   const [clusters, setClusters] = useState<ClusterState[]>([]);
   const [draggedTrayPiece, setDraggedTrayPiece] = useState<{
     piece: PieceState;
@@ -334,6 +338,19 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     return layoutBoardFromImage(image.naturalWidth, image.naturalHeight, gridN, stageSpaceW, stageSpaceH);
   }, [image, gridN, stageSpaceW, stageSpaceH, mainSize.width]);
 
+  /**
+   * Ordre de rendu Konva : locked en premier (z-index bas), unlocked en dernier (z-index haut).
+   * Garantit qu'une pièce mobile chevauchant une pièce verrouillée reste toujours
+   * accessible et visible au-dessus. La logique d'état (clusters) reste inchangée :
+   * handleDragStart place déjà le cluster dragué en fin de liste → il sera le dernier
+   * parmi les unlocked → z-index le plus élevé pendant le drag.
+   */
+  const sortedClusters = useMemo(() => {
+    const locked = clusters.filter(c => c.locked);
+    const unlocked = clusters.filter(c => !c.locked);
+    return [...locked, ...unlocked];
+  }, [clusters]);
+
   // ─── Reconstruct full PieceState from a save ────────────────────────────────
   const restoreFromSave = useCallback((save: PuzzleSave) => {
     const n = save.gridN as GridN;
@@ -404,7 +421,15 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   }, [image, getSave, puzzle.id, restoreFromSave]);
 
   const shuffleCurrent = useCallback(() => {
-    setTrayPieces(prev => [...prev].sort(() => Math.random() - 0.5));
+    setTrayPieces(prev => {
+      if (prev.length === 0) return prev;
+      // Fisher-Yates avec dérangement garanti.
+      // Les pièces correctement placées (locked) sont dans `clusters`, jamais dans
+      // `trayPieces` → elles ne sont structurellement pas affectées par ce mélange.
+      return shuffleAsDerangement(prev);
+    });
+    // Incrémenter la clé pour re-déclencher l'animation du bac
+    setShuffleKey(k => k + 1);
     setHelpOn(false);
   }, []);
 
@@ -953,7 +978,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                   />
                 </Layer>
                 <Layer>
-                  {clusters.map((cluster) => (
+                  {sortedClusters.map((cluster) => (
                     <ClusterGroup
                       key={cluster.id}
                       cluster={cluster}
@@ -1010,7 +1035,9 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
               }`}
               style={{ WebkitOverflowScrolling: 'touch' }}
             >
+              {/* shuffleKey force le remount de ce container pour re-déclencher animate-in sur toutes les pièces */}
               <div 
+                key={shuffleKey}
                 className={`flex ${
                   isSideTray 
                     ? 'flex-col items-center py-8 gap-6 w-full min-h-max' 
