@@ -9,6 +9,7 @@ export type SavedCluster = {
   x: number;
   y: number;
   locked: boolean;
+  normalized?: boolean; // if true, x/y/offsets are in grid-unit coords (not raw px)
   pieceOffsets: Array<{ id: string; offsetX: number; offsetY: number }>;
 };
 

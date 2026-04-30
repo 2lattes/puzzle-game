@@ -338,6 +338,54 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     return layoutBoardFromImage(image.naturalWidth, image.naturalHeight, gridN, stageSpaceW, stageSpaceH);
   }, [image, gridN, stageSpaceW, stageSpaceH, mainSize.width]);
 
+  // ─── Rescale cluster positions on layout change (orientation / resize) ────────
+  // Keep a ref to the *previous* layout so we can compute the scale ratio.
+  const prevLayoutRef = useRef<Layout | null>(null);
+
+  useEffect(() => {
+    if (phase !== "playing" || layout === null) {
+      prevLayoutRef.current = layout;
+      return;
+    }
+
+    const prev = prevLayoutRef.current;
+    prevLayoutRef.current = layout;
+
+    // No previous layout means this is the first render — nothing to rescale.
+    if (prev === null || prev.pieceW === 0) return;
+    // If the piece size didn't change (e.g. only a minor relayout), skip.
+    if (prev.pieceW === layout.pieceW && prev.pieceH === layout.pieceH) return;
+
+    const scaleX = layout.pieceW / prev.pieceW;
+    const scaleY = layout.pieceH / prev.pieceH;
+
+    setClusters((prevClusters) =>
+      prevClusters.map((cl) => {
+        if (cl.locked) {
+          // Locked clusters have a deterministic board position — snap them exactly.
+          const first = cl.pieces[0];
+          const originCol = first.col - Math.round(first.offsetX / prev.pieceW);
+          const originRow = first.row - Math.round(first.offsetY / prev.pieceH);
+          return {
+            ...cl,
+            x: layout.boardX + originCol * layout.pieceW,
+            y: layout.boardY + originRow * layout.pieceH,
+          };
+        }
+        // Free clusters: apply the uniform scale factor relative to the board origin.
+        const relX = cl.x - prev.boardX;
+        const relY = cl.y - prev.boardY;
+        return {
+          ...cl,
+          x: layout.boardX + relX * scaleX,
+          y: layout.boardY + relY * scaleY,
+        };
+      })
+    );
+  // We intentionally depend only on `layout` and `phase` here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout, phase]);
+
   /**
    * Ordre de rendu Konva : locked en premier (z-index bas), unlocked en dernier (z-index haut).
    * Garantit qu'une pièce mobile chevauchant une pièce verrouillée reste toujours
@@ -352,6 +400,9 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   }, [clusters]);
 
   // ─── Reconstruct full PieceState from a save ────────────────────────────────
+  // NOTE: saved x/y are in normalized grid-unit coordinates relative to board
+  // origin (i.e., x_norm = (x_px - boardX) / pieceW). We reconstruct pixel
+  // positions from the *current* layout so saves are orientation-independent.
   const restoreFromSave = useCallback((save: PuzzleSave) => {
     const n = save.gridN as GridN;
     const shapes = generateShapeData(n);
@@ -365,14 +416,44 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
 
     const restoredTray: PieceState[] = save.trayPieceIds.map((id) => buildPiece(id));
 
-    const restoredClusters: ClusterState[] = save.clusters.map((sc) => ({
-      id: sc.id,
-      x: sc.x,
-      y: sc.y,
-      locked: sc.locked,
-      snapFlash: false,
-      pieces: sc.pieceOffsets.map((po) => buildPiece(po.id, po.offsetX, po.offsetY)),
-    }));
+    // We'll defer applying pixel positions until after the layout is ready.
+    // Store clusters raw here; the rescale useEffect will reconcile them if
+    // the layout was already computed from a previous render at the same size.
+    // For a fresh restore we reconstruct immediately using prevLayoutRef if set,
+    // otherwise the rescale useEffect will handle it on next layout change.
+    const currentLayout = prevLayoutRef.current;
+
+    const restoredClusters: ClusterState[] = save.clusters.map((sc) => {
+      // Detect old-format saves (raw px) vs new-format (normalized):
+      // In old format, x was a raw px value (e.g., 320). In new format it's a
+      // small float like 2.5. We distinguish via sc.normalized flag.
+      let pixelX = sc.x;
+      let pixelY = sc.y;
+      let offsetPixelW = (offsetX: number) => offsetX;
+      let offsetPixelH = (offsetY: number) => offsetY;
+
+      if (sc.normalized && currentLayout) {
+        pixelX = currentLayout.boardX + sc.x * currentLayout.pieceW;
+        pixelY = currentLayout.boardY + sc.y * currentLayout.pieceH;
+        offsetPixelW = (ox: number) => ox * currentLayout.pieceW;
+        offsetPixelH = (oy: number) => oy * currentLayout.pieceH;
+      } else if (sc.normalized && !currentLayout) {
+        // Layout not yet known — store raw norm values; rescale effect will fix.
+        pixelX = sc.x;
+        pixelY = sc.y;
+      }
+
+      return {
+        id: sc.id,
+        x: pixelX,
+        y: pixelY,
+        locked: sc.locked,
+        snapFlash: false,
+        pieces: sc.pieceOffsets.map((po) =>
+          buildPiece(po.id, offsetPixelW(po.offsetX), offsetPixelH(po.offsetY))
+        ),
+      };
+    });
 
     elapsedRef.current = save.elapsedSeconds;
     timerStartRef.current = null;
@@ -434,21 +515,32 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   }, []);
 
   // ─── Build a PuzzleSave snapshot from current React state ────────────────────
+  // Cluster positions are saved as normalized grid-unit coordinates so the save
+  // is screen-size-independent and can be restored on any orientation.
   const buildSave = useCallback(
-    (currentTray: PieceState[], currentClusters: ClusterState[], currentGridN: GridN): PuzzleSave => ({
-      puzzleId: puzzle.id,
-      gridN: currentGridN,
-      savedAt: new Date().toISOString(),
-      elapsedSeconds: getElapsed(),
-      trayPieceIds: currentTray.map((p) => p.id),
-      clusters: currentClusters.map((cl) => ({
-        id: cl.id,
-        x: cl.x,
-        y: cl.y,
-        locked: cl.locked,
-        pieceOffsets: cl.pieces.map((p) => ({ id: p.id, offsetX: p.offsetX, offsetY: p.offsetY })),
-      })),
-    }),
+    (currentTray: PieceState[], currentClusters: ClusterState[], currentGridN: GridN): PuzzleSave => {
+      const L = prevLayoutRef.current;
+      return {
+        puzzleId: puzzle.id,
+        gridN: currentGridN,
+        savedAt: new Date().toISOString(),
+        elapsedSeconds: getElapsed(),
+        trayPieceIds: currentTray.map((p) => p.id),
+        clusters: currentClusters.map((cl) => ({
+          id: cl.id,
+          // Normalize relative to board origin in grid-unit coordinates.
+          x: L && L.pieceW > 0 ? (cl.x - L.boardX) / L.pieceW : cl.x,
+          y: L && L.pieceH > 0 ? (cl.y - L.boardY) / L.pieceH : cl.y,
+          locked: cl.locked,
+          normalized: true, // flag for restoreFromSave to distinguish formats
+          pieceOffsets: cl.pieces.map((p) => ({
+            id: p.id,
+            offsetX: L && L.pieceW > 0 ? p.offsetX / L.pieceW : p.offsetX,
+            offsetY: L && L.pieceH > 0 ? p.offsetY / L.pieceH : p.offsetY,
+          })),
+        })),
+      };
+    },
     [puzzle.id, getElapsed],
   );
 
@@ -476,29 +568,29 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     return () => clearInterval(id);
   }, [phase, gridN, won, buildSave, writeSave]);
 
-  // ─── Save on tab/window close (beforeunload) ─────────────────────────────────
+  // ─── Save on tab/window close or app switch ────────────────────────────────────
+  // `beforeunload` covers desktop tab close; `visibilitychange` covers iOS/iPadOS
+  // scenarios (switching apps, locking screen, closing Safari tabs) where
+  // `beforeunload` is unreliable or not fired at all.
   useEffect(() => {
-    const handler = () => {
+    const saveNow = () => {
       if (phaseRef.current !== "playing" || gridNRef.current === null) return;
-      const save: PuzzleSave = {
-        puzzleId: puzzle.id,
-        gridN: gridNRef.current,
-        savedAt: new Date().toISOString(),
-        elapsedSeconds: getElapsed(),
-        trayPieceIds: trayPiecesRef.current.map((p) => p.id),
-        clusters: clustersRef.current.map((cl) => ({
-          id: cl.id,
-          x: cl.x,
-          y: cl.y,
-          locked: cl.locked,
-          pieceOffsets: cl.pieces.map((p) => ({ id: p.id, offsetX: p.offsetX, offsetY: p.offsetY })),
-        })),
-      };
+      const save = buildSave(trayPiecesRef.current, clustersRef.current, gridNRef.current);
       writeSaveSync(save);
     };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [puzzle.id, getElapsed]);
+
+    const handleBeforeUnload = () => saveNow();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") saveNow();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [buildSave]);
 
   useEffect(() => {
     if (phase !== "playing" || gridN === null) return;
