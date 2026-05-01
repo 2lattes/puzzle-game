@@ -238,91 +238,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const { markCompleted } = useCompleted();
   const { getSave, writeSave, deleteSave } = useSaves();
 
-  // ─── Zoom & Pan State ────────────────────────────────────────────────────────
-  const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleWheel = (e: any) => {
-    e.evt.preventDefault();
-    const scaleBy = 1.1;
-    const stage = e.target.getStage();
-    const oldScale = stage.scaleX();
-    const pointer = stage.getPointerPosition();
-
-    if (!pointer) return;
-
-    const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
-    };
-
-    const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    const clampedScale = Math.max(0.5, Math.min(newScale, 5));
-
-    setStageScale(clampedScale);
-    setStagePos({
-      x: pointer.x - mousePointTo.x * clampedScale,
-      y: pointer.y - mousePointTo.y * clampedScale,
-    });
-  };
-
-  // Pinch-to-zoom logic for mobile
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const lastCenter = useRef<any>(null);
-  const lastDist = useRef(0);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleTouchMove = (e: any) => {
-    e.evt.preventDefault();
-    const touch1 = e.evt.touches[0];
-    const touch2 = e.evt.touches[1];
-
-    if (touch1 && touch2) {
-      const stage = e.target.getStage();
-      const p1 = { x: touch1.clientX, y: touch1.clientY };
-      const p2 = { x: touch2.clientX, y: touch2.clientY };
-
-      if (!lastCenter.current) {
-        lastCenter.current = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-        lastDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-        return;
-      }
-
-      const newCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-      const newDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-
-      const oldScale = stage.scaleX();
-      const scaleBy = newDist / lastDist.current;
-      const newScale = oldScale * scaleBy;
-      const clampedScale = Math.max(0.5, Math.min(newScale, 5));
-
-      // Coordinate of the center relative to the stage
-      const centerRel = {
-        x: (newCenter.x - stage.x()) / oldScale,
-        y: (newCenter.y - stage.y()) / oldScale,
-      };
-
-      setStageScale(clampedScale);
-      setStagePos({
-        x: newCenter.x - centerRel.x * clampedScale,
-        y: newCenter.y - centerRel.y * clampedScale,
-      });
-
-      lastDist.current = newDist;
-      lastCenter.current = newCenter;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    lastCenter.current = null;
-    lastDist.current = 0;
-  };
-
-  useEffect(() => {
-    setStageScale(1);
-    setStagePos({ x: 0, y: 0 });
-  }, [puzzle.id, gridN]);
 
   // ─── Timer ────────────────────────────────────────────────────────────────────
   const elapsedRef = useRef(0);       // total elapsed seconds (persisted)
@@ -1211,19 +1127,6 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                 width={layout.stageW}
                 height={layout.stageH}
                 pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
-                draggable={true}
-                scaleX={stageScale}
-                scaleY={stageScale}
-                x={stagePos.x}
-                y={stagePos.y}
-                onWheel={handleWheel}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-                onDragEnd={(e) => {
-                  if (e.target === e.target.getStage()) {
-                    setStagePos({ x: e.target.x(), y: e.target.y() });
-                  }
-                }}
               >
                 <Layer listening={false}>
                   {helpOn && (
