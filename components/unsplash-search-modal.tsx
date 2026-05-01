@@ -116,7 +116,6 @@ function ConfirmPanel({
   photo,
   theme,
   orientation,
-  searchQuery,
   onConfirm,
   onCancel,
   isAdding,
@@ -124,7 +123,6 @@ function ConfirmPanel({
   photo: UnsplashPhoto;
   theme: string;
   orientation: Orientation;
-  searchQuery: string;
   onConfirm: () => void;
   onCancel: () => void;
   isAdding: boolean;
@@ -381,7 +379,6 @@ export function UnsplashSearchModal({
               photo={selectedPhoto}
               theme={defaultTheme}
               orientation={orientation}
-              searchQuery={query.trim()}
               onConfirm={handleConfirmAdd}
               onCancel={() => setSelectedPhoto(null)}
               isAdding={isAdding}

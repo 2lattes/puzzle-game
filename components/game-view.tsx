@@ -242,6 +242,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
     const scaleBy = 1.1;
@@ -267,9 +268,11 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   };
 
   // Pinch-to-zoom logic for mobile
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const lastCenter = useRef<any>(null);
   const lastDist = useRef(0);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleTouchMove = (e: any) => {
     e.evt.preventDefault();
     const touch1 = e.evt.touches[0];
@@ -503,7 +506,6 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     });
 
     prevLayoutRef.current = layout;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, phase]);
 
   /**
@@ -542,8 +544,8 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       // small float like 2.5. We distinguish via sc.normalized flag.
       let pixelX = sc.x;
       let pixelY = sc.y;
-      let offsetPixelW = (offsetX: number) => offsetX;
-      let offsetPixelH = (offsetY: number) => offsetY;
+      const offsetPixelW = (offsetX: number) => offsetX;
+      const offsetPixelH = (offsetY: number) => offsetY;
       let needsInitialLayout = false;
 
       if (sc.normalized) {
