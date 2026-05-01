@@ -62,13 +62,13 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
     >
       {/* Folder tab */}
       <div
-        className="w-3/4 h-5 rounded-t-xl bg-puzzle-primary/80 transition-all duration-300 group-hover:bg-puzzle-primary"
+        className="w-3/4 h-5 rounded-t-xl bg-puzzle-primary/80 transition-all duration-[1s] ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:bg-puzzle-primary"
         style={{ marginBottom: "-2px" }}
       />
 
       {/* Folder body */}
       <div
-        className="relative w-full overflow-hidden rounded-[1.5rem] aspect-square shadow-md ring-1 ring-puzzle-primary/20 transition-all duration-300 group-hover:shadow-xl group-hover:ring-puzzle-primary/50 group-hover:-translate-y-1"
+        className="relative w-full overflow-hidden rounded-[1.5rem] aspect-square shadow-[0_8px_20px_rgba(0,0,0,0.03)] ring-1 ring-puzzle-primary/20 transition-all duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:shadow-[0_20px_40px_rgba(168,101,93,0.15)] group-hover:ring-puzzle-primary/40 group-hover:-translate-y-2"
       >
         {/* Background image */}
         {heroUrl && !error ? (
@@ -79,7 +79,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
                 alt={theme}
                 fill
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                className="object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                className="object-cover transition-transform duration-[1.5s] ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-[1.08]"
                 quality={80}
                 onError={() => setError(true)}
               />
@@ -88,7 +88,7 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
               <img
                 src={heroUrl}
                 alt={theme}
-                className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
+                className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1.5s] ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-[1.08]"
                 loading="lazy"
                 onError={() => setError(true)}
               />
@@ -131,7 +131,6 @@ function CategoryCard({ theme, heroUrl, count, onClick }: CategoryCardProps) {
   );
 }
 
-/** Floating bottom nav button — consistent with SelectionView's NavButton */
 function NavButton({
   active,
   onClick,
@@ -146,16 +145,16 @@ function NavButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-[1.25rem] w-[80px] transition-all duration-300 ${
+      className={`flex flex-col items-center justify-center py-2 px-0.5 sm:py-2.5 sm:px-2 rounded-xl sm:rounded-[1.25rem] flex-1 sm:flex-none min-w-[54px] sm:w-[80px] transition-all duration-300 ${
         active
           ? "bg-puzzle-primary text-white shadow-lg scale-105"
           : "text-puzzle-secondary/60 hover:bg-puzzle-primary/10 hover:text-puzzle-text"
       }`}
     >
-      <span className="w-6 h-6 flex items-center justify-center mb-1">
+      <span className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center mb-1">
         {icon}
       </span>
-      <span className="text-[11px] font-bold tracking-wide">{label}</span>
+      <span className="text-[8px] sm:text-[11px] font-bold tracking-wide truncate max-w-[50px] sm:max-w-none">{label}</span>
     </button>
   );
 }
@@ -228,7 +227,13 @@ export function CategoryView({
       </div>
 
       {/* Floating Bottom Nav */}
-      <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center justify-center gap-2 rounded-[2rem] bg-white/90 p-3 shadow-2xl backdrop-blur-xl border border-puzzle-primary/10">
+      <div 
+        className="fixed left-1/2 z-50 flex w-[calc(100%-1rem)] sm:w-auto max-w-[600px] overflow-x-auto -translate-x-1/2 items-center justify-between sm:justify-center gap-1 sm:gap-2 rounded-[2rem] bg-white/95 p-1.5 sm:p-3 shadow-2xl backdrop-blur-xl border border-puzzle-primary/10 [&::-webkit-scrollbar]:hidden"
+        style={{ 
+          bottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))",
+          scrollbarWidth: 'none'
+        }}
+      >
         {/* Catégories (active) */}
         <NavButton
           active={true}

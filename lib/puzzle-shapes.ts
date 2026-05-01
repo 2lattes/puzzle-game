@@ -7,17 +7,51 @@ export type PieceShapeData = {
   left: EdgeType;
 };
 
+// ─── Seeded PRNG (Mulberry32) ─────────────────────────────────────────────────
+// Ensures the same seed always produces the same sequence of random values,
+// so puzzle shapes are deterministic for a given puzzleId + gridN.
+
+/** Simple 32-bit hash of a string (FNV-1a). */
+function hashSeed(str: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0; // unsigned 32-bit
+}
+
+/** Mulberry32 — fast, high-quality 32-bit PRNG. Returns a () => number in [0, 1). */
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /**
- * Génère la matrice de connexions pour une grille de puzzle N x N
+ * Génère la matrice de connexions pour une grille de puzzle N x N.
+ *
+ * @param gridN  Taille de la grille (ex. 4, 6, 8…)
+ * @param seed   Chaîne déterministe (ex. `puzzleId + gridN`). Si fournie,
+ *               les formes seront identiques à chaque appel avec le même seed.
+ *               Si omise, utilise Math.random() (rétro-compat avec d'anciens appels).
  */
-export function generateShapeData(gridN: number): PieceShapeData[][] {
+export function generateShapeData(gridN: number, seed?: string): PieceShapeData[][] {
+  const rand = seed !== undefined
+    ? mulberry32(hashSeed(seed))
+    : Math.random.bind(Math);
+
   const horizontalEdges: (1 | -1)[][] = []; // gridN-1 rows of gridN cols
   const verticalEdges: (1 | -1)[][] = []; // gridN rows of gridN-1 cols
   
   for (let r = 0; r < gridN - 1; r++) {
     const row: (1 | -1)[] = [];
     for (let c = 0; c < gridN; c++) {
-      row.push(Math.random() > 0.5 ? 1 : -1);
+      row.push(rand() > 0.5 ? 1 : -1);
     }
     horizontalEdges.push(row);
   }
@@ -25,7 +59,7 @@ export function generateShapeData(gridN: number): PieceShapeData[][] {
   for (let r = 0; r < gridN; r++) {
     const row: (1 | -1)[] = [];
     for (let c = 0; c < gridN - 1; c++) {
-      row.push(Math.random() > 0.5 ? 1 : -1);
+      row.push(rand() > 0.5 ? 1 : -1);
     }
     verticalEdges.push(row);
   }

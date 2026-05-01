@@ -37,6 +37,7 @@ type ClusterState = {
   pieces: PieceState[];
   locked: boolean;
   snapFlash: boolean;
+  needsInitialLayout?: boolean;
 };
 
 type KonvaDragTarget = {
@@ -117,8 +118,8 @@ function layoutBoardFromImage(
 
 type Layout = ReturnType<typeof layoutBoardFromImage>;
 
-function createInitialTrayPieces(gridN: GridN): PieceState[] {
-  const shapes = generateShapeData(gridN);
+function createInitialTrayPieces(gridN: GridN, puzzleId: string): PieceState[] {
+  const shapes = generateShapeData(gridN, `${puzzleId}:${gridN}`);
   const pieces: PieceState[] = [];
   for (let row = 0; row < gridN; row++) {
     for (let col = 0; col < gridN; col++) {
@@ -237,6 +238,89 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const { markCompleted } = useCompleted();
   const { getSave, writeSave, deleteSave } = useSaves();
 
+  // ─── Zoom & Pan State ────────────────────────────────────────────────────────
+  const [stageScale, setStageScale] = useState(1);
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const scaleBy = 1.1;
+    const stage = e.target.getStage();
+    const oldScale = stage.scaleX();
+    const pointer = stage.getPointerPosition();
+
+    if (!pointer) return;
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    const newScale = e.evt.deltaY < 0 ? oldScale * scaleBy : oldScale / scaleBy;
+    const clampedScale = Math.max(0.5, Math.min(newScale, 5));
+
+    setStageScale(clampedScale);
+    setStagePos({
+      x: pointer.x - mousePointTo.x * clampedScale,
+      y: pointer.y - mousePointTo.y * clampedScale,
+    });
+  };
+
+  // Pinch-to-zoom logic for mobile
+  const lastCenter = useRef<any>(null);
+  const lastDist = useRef(0);
+
+  const handleTouchMove = (e: any) => {
+    e.evt.preventDefault();
+    const touch1 = e.evt.touches[0];
+    const touch2 = e.evt.touches[1];
+
+    if (touch1 && touch2) {
+      const stage = e.target.getStage();
+      const p1 = { x: touch1.clientX, y: touch1.clientY };
+      const p2 = { x: touch2.clientX, y: touch2.clientY };
+
+      if (!lastCenter.current) {
+        lastCenter.current = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        lastDist.current = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        return;
+      }
+
+      const newCenter = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const newDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+
+      const oldScale = stage.scaleX();
+      const scaleBy = newDist / lastDist.current;
+      const newScale = oldScale * scaleBy;
+      const clampedScale = Math.max(0.5, Math.min(newScale, 5));
+
+      // Coordinate of the center relative to the stage
+      const centerRel = {
+        x: (newCenter.x - stage.x()) / oldScale,
+        y: (newCenter.y - stage.y()) / oldScale,
+      };
+
+      setStageScale(clampedScale);
+      setStagePos({
+        x: newCenter.x - centerRel.x * clampedScale,
+        y: newCenter.y - centerRel.y * clampedScale,
+      });
+
+      lastDist.current = newDist;
+      lastCenter.current = newCenter;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    lastCenter.current = null;
+    lastDist.current = 0;
+  };
+
+  useEffect(() => {
+    setStageScale(1);
+    setStagePos({ x: 0, y: 0 });
+  }, [puzzle.id, gridN]);
+
   // ─── Timer ────────────────────────────────────────────────────────────────────
   const elapsedRef = useRef(0);       // total elapsed seconds (persisted)
   const timerStartRef = useRef<number | null>(null); // Date.now() when last started
@@ -257,6 +341,16 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     }
   }, []);
 
+  const [displayElapsedMins, setDisplayElapsedMins] = useState(0);
+
+  useEffect(() => {
+    if (phase !== "playing" || won) return;
+    const updateDisplay = () => setDisplayElapsedMins(Math.floor(getElapsed() / 60));
+    updateDisplay();
+    const interval = setInterval(updateDisplay, 1000);
+    return () => clearInterval(interval);
+  }, [phase, won, getElapsed]);
+
   // ─── Refs for beforeunload (must read current state synchronously) ────────────
   const trayPiecesRef = useRef<PieceState[]>([]);
   const clustersRef = useRef<ClusterState[]>([]);
@@ -267,6 +361,11 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   useEffect(() => { clustersRef.current = clusters; }, [clusters]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
   useEffect(() => { gridNRef.current = gridN; }, [gridN]);
+
+  const lockedPiecesCount = useMemo(() => {
+    return clusters.filter(c => c.locked).reduce((sum, c) => sum + c.pieces.length, 0);
+  }, [clusters]);
+  const totalPiecesCount = gridN ? gridN * gridN : 0;
 
   const [mainRef, mainSize] = useElementSize<HTMLElement>();
   const [windowSize, setWindowSize] = useState({ 
@@ -343,46 +442,67 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   const prevLayoutRef = useRef<Layout | null>(null);
 
   useEffect(() => {
-    if (phase !== "playing" || layout === null) {
+    prevLayoutRef.current = null;
+  }, [puzzle.id]);
+
+  useEffect(() => {
+    if (phase !== "playing" || layout === null || layout.pieceW === 0) {
       prevLayoutRef.current = layout;
       return;
     }
 
     const prev = prevLayoutRef.current;
-    prevLayoutRef.current = layout;
 
-    // No previous layout means this is the first render — nothing to rescale.
-    if (prev === null || prev.pieceW === 0) return;
-    // If the piece size didn't change (e.g. only a minor relayout), skip.
-    if (prev.pieceW === layout.pieceW && prev.pieceH === layout.pieceH) return;
+    setClusters((prevClusters) => {
+      if (prevClusters.length === 0) return prevClusters;
 
-    const scaleX = layout.pieceW / prev.pieceW;
-    const scaleY = layout.pieceH / prev.pieceH;
-
-    setClusters((prevClusters) =>
-      prevClusters.map((cl) => {
-        if (cl.locked) {
-          // Locked clusters have a deterministic board position — snap them exactly.
-          const first = cl.pieces[0];
-          const originCol = first.col - Math.round(first.offsetX / prev.pieceW);
-          const originRow = first.row - Math.round(first.offsetY / prev.pieceH);
+      // Case 1: Handle initial scale for restored normalized clusters
+      if (prevClusters.some(c => c.needsInitialLayout)) {
+        return prevClusters.map((cl) => {
+          if (!cl.needsInitialLayout) return cl;
           return {
             ...cl,
-            x: layout.boardX + originCol * layout.pieceW,
-            y: layout.boardY + originRow * layout.pieceH,
+            x: layout.boardX + cl.x * layout.pieceW,
+            y: layout.boardY + cl.y * layout.pieceH,
+            needsInitialLayout: false,
+            pieces: cl.pieces.map((p) => ({
+              ...p,
+              offsetX: p.offsetX * layout.pieceW,
+              offsetY: p.offsetY * layout.pieceH,
+            }))
           };
-        }
-        // Free clusters: apply the uniform scale factor relative to the board origin.
-        const relX = cl.x - prev.boardX;
-        const relY = cl.y - prev.boardY;
-        return {
-          ...cl,
-          x: layout.boardX + relX * scaleX,
-          y: layout.boardY + relY * scaleY,
-        };
-      })
-    );
-  // We intentionally depend only on `layout` and `phase` here.
+        });
+      }
+
+      // Case 2: Handle subsequent resizes (orientation change, window resize)
+      if (prev && prev.pieceW > 0 && (prev.pieceW !== layout.pieceW || prev.pieceH !== layout.pieceH)) {
+        const scaleX = layout.pieceW / prev.pieceW;
+        const scaleY = layout.pieceH / prev.pieceH;
+        return prevClusters.map((cl) => {
+          if (cl.locked) {
+            const first = cl.pieces[0];
+            const originCol = first.col - Math.round(first.offsetX / prev.pieceW);
+            const originRow = first.row - Math.round(first.offsetY / prev.pieceH);
+            return {
+              ...cl,
+              x: layout.boardX + originCol * layout.pieceW,
+              y: layout.boardY + originRow * layout.pieceH,
+            };
+          }
+          const relX = cl.x - prev.boardX;
+          const relY = cl.y - prev.boardY;
+          return {
+            ...cl,
+            x: layout.boardX + relX * scaleX,
+            y: layout.boardY + relY * scaleY,
+          };
+        });
+      }
+
+      return prevClusters;
+    });
+
+    prevLayoutRef.current = layout;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layout, phase]);
 
@@ -405,7 +525,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
   // positions from the *current* layout so saves are orientation-independent.
   const restoreFromSave = useCallback((save: PuzzleSave) => {
     const n = save.gridN as GridN;
-    const shapes = generateShapeData(n);
+    const shapes = generateShapeData(n, `${puzzle.id}:${n}`);
 
     const buildPiece = (id: string, offsetX = 0, offsetY = 0): PieceState => {
       const parts = id.split("-"); // "p-{row}-{col}"
@@ -416,13 +536,6 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
 
     const restoredTray: PieceState[] = save.trayPieceIds.map((id) => buildPiece(id));
 
-    // We'll defer applying pixel positions until after the layout is ready.
-    // Store clusters raw here; the rescale useEffect will reconcile them if
-    // the layout was already computed from a previous render at the same size.
-    // For a fresh restore we reconstruct immediately using prevLayoutRef if set,
-    // otherwise the rescale useEffect will handle it on next layout change.
-    const currentLayout = prevLayoutRef.current;
-
     const restoredClusters: ClusterState[] = save.clusters.map((sc) => {
       // Detect old-format saves (raw px) vs new-format (normalized):
       // In old format, x was a raw px value (e.g., 320). In new format it's a
@@ -431,16 +544,14 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
       let pixelY = sc.y;
       let offsetPixelW = (offsetX: number) => offsetX;
       let offsetPixelH = (offsetY: number) => offsetY;
+      let needsInitialLayout = false;
 
-      if (sc.normalized && currentLayout) {
-        pixelX = currentLayout.boardX + sc.x * currentLayout.pieceW;
-        pixelY = currentLayout.boardY + sc.y * currentLayout.pieceH;
-        offsetPixelW = (ox: number) => ox * currentLayout.pieceW;
-        offsetPixelH = (oy: number) => oy * currentLayout.pieceH;
-      } else if (sc.normalized && !currentLayout) {
-        // Layout not yet known — store raw norm values; rescale effect will fix.
+      if (sc.normalized) {
+        // ALWAYS defer to the rescale effect for initial positioning of normalized saves.
+        // This avoids using a stale layout from a previous puzzle session.
         pixelX = sc.x;
         pixelY = sc.y;
+        needsInitialLayout = true;
       }
 
       return {
@@ -449,6 +560,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         y: pixelY,
         locked: sc.locked,
         snapFlash: false,
+        needsInitialLayout,
         pieces: sc.pieceOffsets.map((po) =>
           buildPiece(po.id, offsetPixelW(po.offsetX), offsetPixelH(po.offsetY))
         ),
@@ -466,7 +578,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     setHelpOn(false);
     setWon(false);
     startTimer();
-  }, [startTimer]);
+  }, [puzzle.id, startTimer]);
 
   const startGame = useCallback((n: GridN) => {
     if (!image) return;
@@ -481,7 +593,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     winAlertedRef.current = false;
     elapsedRef.current = 0;
     timerStartRef.current = null;
-    setTrayPieces(createInitialTrayPieces(n));
+    setTrayPieces(createInitialTrayPieces(n, puzzle.id));
     setClusters([]);
     setGridN(n);
     setPhase("playing");
@@ -514,12 +626,25 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
     setHelpOn(false);
   }, []);
 
+  const sortEdgesFirst = useCallback(() => {
+    setTrayPieces(prev => {
+      const next = [...prev];
+      next.sort((a, b) => {
+        const aIsEdge = a.shapeData.top === 0 || a.shapeData.right === 0 || a.shapeData.bottom === 0 || a.shapeData.left === 0 ? 1 : 0;
+        const bIsEdge = b.shapeData.top === 0 || b.shapeData.right === 0 || b.shapeData.bottom === 0 || b.shapeData.left === 0 ? 1 : 0;
+        return bIsEdge - aIsEdge; // 1 (edge) goes before 0 (inner)
+      });
+      return next;
+    });
+    setShuffleKey(k => k + 1);
+  }, []);
+
   // ─── Build a PuzzleSave snapshot from current React state ────────────────────
   // Cluster positions are saved as normalized grid-unit coordinates so the save
   // is screen-size-independent and can be restored on any orientation.
   const buildSave = useCallback(
     (currentTray: PieceState[], currentClusters: ClusterState[], currentGridN: GridN): PuzzleSave => {
-      const L = prevLayoutRef.current;
+      const L = layout; // Use the current layout directly
       return {
         puzzleId: puzzle.id,
         gridN: currentGridN,
@@ -541,7 +666,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         })),
       };
     },
-    [puzzle.id, getElapsed],
+    [puzzle.id, getElapsed, layout],
   );
 
   // ─── Persist save when clusters or tray changes (piece placed) ───────────────
@@ -695,6 +820,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
             );
             const allFree = newCluster.pieces.every((p) => !lockedPieceSlots.has(`${p.col},${p.row}`));
             if (allFree) {
+              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
               setTimeout(() => clearFlashLater(newCluster.id, 800), 0);
               return updated.map(c => c.id === newCluster.id ? { ...c, x: snap.x, y: snap.y, locked: true, snapFlash: true } : c);
             }
@@ -718,6 +844,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
             }
           }
           if (merged) {
+            if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([20, 10, 20]);
             setTimeout(() => clearFlashLater(currentClId, 800), 0);
           }
           return updated;
@@ -883,6 +1010,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         if (allFree) {
           node.x(snap.x);
           node.y(snap.y);
+          if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(15);
           setTimeout(() => clearFlashLater(clusterId, 800), 0);
           return updated.map(c => c.id === clusterId ? { ...c, x: snap.x, y: snap.y, locked: true, snapFlash: true } : c);
         }
@@ -913,6 +1041,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
         const newCl = workingClusters.find((c) => c.id === currentClId)!;
         node.x(newCl.x);
         node.y(newCl.y);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([20, 10, 20]);
         setTimeout(() => clearFlashLater(currentClId, 800), 0);
         return workingClusters;
       }
@@ -929,49 +1058,82 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
 
   return (
     <div className="flex h-[100dvh] w-full flex-col bg-puzzle-bg font-sans text-puzzle-text overflow-hidden touch-none">
-      <header className="z-10 flex flex-wrap items-center gap-3 border-b border-puzzle-primary/20 bg-white/90 backdrop-blur-md px-4 py-3 shadow-sm transition-all duration-300">
-        <button
-          type="button"
-          onClick={onBack}
-          className="min-h-[44px] order-1 rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-puzzle-primaryDark hover:shadow disabled:opacity-50"
-        >
-          Retour
-        </button>
-        <div className="order-2 min-w-0 flex-1 text-center">
-          <p className="text-xs uppercase tracking-wider text-puzzle-primaryDark mb-0.5">
-            {puzzle.theme}
-          </p>
-          <h1 className="truncate text-lg font-bold text-puzzle-text">
-            {puzzle.title}
-          </h1>
+      <header className="z-10 flex flex-col border-b border-puzzle-primary/20 bg-white/90 backdrop-blur-md px-4 py-2 shadow-sm transition-all duration-300 md:h-20 md:flex-row md:items-center md:gap-4 md:py-0">
+        <div className="flex items-center justify-between w-full md:w-auto md:gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (phase === "config" && gridN !== null) {
+                setPhase("playing");
+              } else {
+                onBack();
+              }
+            }}
+            className="flex h-10 items-center justify-center rounded-xl bg-puzzle-primary px-4 text-sm font-medium text-white shadow-sm transition-all hover:bg-puzzle-primaryDark hover:shadow disabled:opacity-50"
+          >
+            Retour
+          </button>
+          
+          <div className="flex-1 px-4 text-center md:px-0 md:text-left min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-puzzle-primaryDark/70 mb-0 md:text-xs">
+              {puzzle.theme}
+            </p>
+            <h1 className="truncate text-sm font-bold text-puzzle-text md:text-base lg:text-lg">
+              {puzzle.title}
+            </h1>
+          </div>
+
+          {/* Spacer for mobile to balance the back button */}
+          <div className="w-10 md:hidden" />
         </div>
+
         {phase === "playing" && (
-          <div className="order-3 flex flex-wrap justify-end gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={shuffleCurrent}
-              className="min-h-[44px] rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-puzzle-primaryDark hover:shadow"
-            >
-              Mélanger
-            </button>
-            <button
-              type="button"
-              onClick={() => setPhase("config")}
-              className="min-h-[44px] rounded-xl bg-puzzle-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-puzzle-primaryDark hover:shadow"
-            >
-              Difficulté
-            </button>
-            <button
-              type="button"
-              onClick={() => setHelpOn((v) => !v)}
-              className={`min-h-[44px] rounded-xl px-4 py-2 text-sm font-medium transition duration-200 ${
-                helpOn
-                  ? "bg-puzzle-primaryDark text-white shadow-sm ring-2 ring-puzzle-primary/50"
-                  : "bg-puzzle-primary text-white shadow-sm hover:bg-puzzle-primaryDark hover:shadow"
-              }`}
-            >
-              Aide
-            </button>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-puzzle-primary/10 pt-2 md:mt-0 md:flex-1 md:border-t-0 md:pt-0">
+            {/* Stats: Time & Progress */}
+            <div className="flex items-center gap-3 text-[11px] font-bold text-puzzle-primaryDark/90 md:ml-4 md:text-xs lg:gap-5">
+              <span className="flex items-center gap-1.5 bg-puzzle-primary/5 px-2 py-1 rounded-lg">
+                <span className="text-sm">⏱</span> {displayElapsedMins} min
+              </span>
+              <span className="flex items-center gap-1.5 bg-puzzle-primary/5 px-2 py-1 rounded-lg">
+                <span className="text-sm">🧩</span> {lockedPiecesCount} / {totalPiecesCount}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-1 items-center justify-end gap-1.5 overflow-x-auto no-scrollbar sm:gap-2">
+              <button
+                type="button"
+                onClick={sortEdgesFirst}
+                className="h-9 rounded-lg bg-puzzle-primary/10 px-3 text-[11px] font-semibold text-puzzle-primaryDark transition hover:bg-puzzle-primary/20 md:h-10 md:rounded-xl md:bg-puzzle-primary md:px-4 md:text-xs md:text-white lg:text-sm"
+              >
+                Bords
+              </button>
+              <button
+                type="button"
+                onClick={shuffleCurrent}
+                className="h-9 rounded-lg bg-puzzle-primary/10 px-3 text-[11px] font-semibold text-puzzle-primaryDark transition hover:bg-puzzle-primary/20 md:h-10 md:rounded-xl md:bg-puzzle-primary md:px-4 md:text-xs md:text-white lg:text-sm"
+              >
+                Mélanger
+              </button>
+              <button
+                type="button"
+                onClick={() => setPhase("config")}
+                className="h-9 rounded-lg bg-puzzle-primary/10 px-3 text-[11px] font-semibold text-puzzle-primaryDark transition hover:bg-puzzle-primary/20 md:h-10 md:rounded-xl md:bg-puzzle-primary md:px-4 md:text-xs md:text-white lg:text-sm"
+              >
+                Difficulté
+              </button>
+              <button
+                type="button"
+                onClick={() => setHelpOn((v) => !v)}
+                className={`h-9 rounded-lg px-3 text-[11px] font-semibold transition duration-200 md:h-10 md:rounded-xl md:px-4 md:text-xs lg:text-sm ${
+                  helpOn
+                    ? "bg-puzzle-primaryDark text-white shadow-sm ring-2 ring-puzzle-primary/50"
+                    : "bg-puzzle-primary/10 text-puzzle-primaryDark hover:bg-puzzle-primary/20 md:bg-puzzle-primary md:text-white"
+                }`}
+              >
+                Aide
+              </button>
+            </div>
           </div>
         )}
       </header>
@@ -1047,6 +1209,19 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                 width={layout.stageW}
                 height={layout.stageH}
                 pixelRatio={typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 2, 2) : 2}
+                draggable={true}
+                scaleX={stageScale}
+                scaleY={stageScale}
+                x={stagePos.x}
+                y={stagePos.y}
+                onWheel={handleWheel}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onDragEnd={(e) => {
+                  if (e.target === e.target.getStage()) {
+                    setStagePos({ x: e.target.x(), y: e.target.y() });
+                  }
+                }}
               >
                 <Layer listening={false}>
                   {helpOn && (
@@ -1064,7 +1239,7 @@ export function GameView({ puzzle, onBack }: GameViewProps) {
                     y={layout.boardY}
                     width={layout.displayW}
                     height={layout.displayH}
-                    fill={helpOn ? "transparent" : "rgba(255,255,255,0.35)"}
+                    fill={helpOn ? "transparent" : "rgba(255,255,255,0.3)"}
                     stroke="#d4d4d8"
                     strokeWidth={1}
                   />
@@ -1319,8 +1494,8 @@ function DifficultyButton({ label, parts, onClick }: { label: string; parts: num
       <div className="flex items-center gap-2 text-2xl font-black text-puzzle-text transition-colors group-hover:text-black">
         {parts}
         <span className="text-xl font-medium text-puzzle-text/40">×</span>
-        <svg width="24" height="24" viewBox="0 0 24 24" className="w-6 h-6 opacity-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M10 21H3V14H5A2 2 0 1 0 5 10H3V3H10V5A2 2 0 1 1 14 5V3H21V10H19A2 2 0 1 0 19 14H21V21H14V19A2 2 0 1 1 10 19V21Z" />
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" className="w-6 h-6 opacity-90" aria-hidden="true">
+          <path d="M 4 6 H 10.5 A 2.5 2.5 0 1 1 13.5 6 H 20 V 10.5 A 2.5 2.5 0 1 0 20 13.5 V 22 H 13.5 A 2.5 2.5 0 1 0 10.5 22 H 4 V 13.5 A 2.5 2.5 0 1 0 4 10.5 Z" />
         </svg>
       </div>
       <span className="mt-2 block text-[11px] font-bold uppercase tracking-widest text-puzzle-primaryDark/80">{label}</span>
